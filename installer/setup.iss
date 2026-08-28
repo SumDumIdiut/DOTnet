@@ -1,5 +1,5 @@
-#define MyAppName "IGTAP Multiplayer Mod"
-#define MyAppVersion "2.0"
+#define MyAppName "DOTnet"
+#define MyAppVersion "2.1"
 #define ExeName "IGTAPsnfDemo.exe"
 #define PlaytestDir "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That''s Also a Platformer Playtest"
 #define DemoDir "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That''s Also a Platformer Demo"
@@ -14,7 +14,7 @@ DisableProgramGroupPage=yes
 DisableReadyPage=yes
 PrivilegesRequired=admin
 OutputDir=output
-OutputBaseFilename=IGTAPMultiplayerModSetup
+OutputBaseFilename=DOTnetSetup
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible

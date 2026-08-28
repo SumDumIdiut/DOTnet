@@ -1,8 +1,6 @@
-# IGTAP Multiplayer Mod
+# DOTnet
 
 Cosmetic multiplayer for *IGTAP: An Incremental Game That's Also a Platformer* (Playtest and Demo Steam builds). Patches `Assembly-CSharp.dll` directly — no BepInEx, no mod loader. Other players show up as ghosts synced over a small relay server: position, facing, animation, name, and colour. No shared game state, no physics.
-
-This repo contains no game code and no compiled game binaries, patched or otherwise. The installer doesn't ship a prebuilt DLL either — it decompiles, patches, and rebuilds `Assembly-CSharp.dll` **on your own machine**, from **your own** legitimately-installed copy of the game, at install time. Everything it touches was already on your PC before you ran it.
 
 ## Layout
 
@@ -32,6 +30,8 @@ node server/server.js
 ```
 
 Defaults to port 7777. Set `PORT` to change it.
+
+There's no built-in/hardcoded server — the client's Direct Connect fields take any host and port. The relay only needs to be running and reachable at the moment people want to play (it doesn't relay anything when nobody's connected, so there's nothing to leave running otherwise). Two people can host and connect entirely on their own, with nobody else's server involved: one of them runs `server.js` somewhere reachable from the internet (a cheap VPS, or their own machine with the port forwarded), and both point Direct Connect at that address. Only the relay itself needs to accept inbound connections — the players don't need to open any ports on their own end.
 
 ## How it works
 
