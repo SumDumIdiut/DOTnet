@@ -2,7 +2,7 @@
 
 Cosmetic multiplayer for *IGTAP: An Incremental Game That's Also a Platformer* (Playtest and Demo Steam builds). Patches `Assembly-CSharp.dll` directly — no BepInEx, no mod loader. Other players show up as ghosts synced over a small relay server: position, facing, animation, name, and colour. No shared game state, no physics.
 
-Defaults to a public relay at `wss://codecade.co.za/dotnet` — install and play, no server setup needed. You can point Direct Connect at any other relay instead; see [Server](#server).
+There's no built-in server address — Direct Connect ships with a placeholder example (`203.0.113.1:7777`), not a real one, so installing it doesn't silently connect strangers to anyone's personal server. You (or whoever's hosting) need to run a relay and share its real address; see [Server](#server).
 
 ## Layout
 
@@ -35,7 +35,7 @@ node server.js
 
 Defaults to port 7777 (`PORT` to change it) and speaks plain `ws://` — no TLS of its own. Rate limits, connection/lobby caps, payload size limits, idle timeouts, and per-IP connection limits are all built in; see the top of `server.js` to tune them.
 
-The client's Direct Connect fields take any host/port — port `443` specifically means "the public relay behind codecade.co.za" (`wss://<host>/dotnet`); anything else means a plain `ws://host:port` to whatever's actually running there. So you're never stuck using the default: run your own `server.js` somewhere reachable (a VPS, or your own machine with the port forwarded) and have people Direct Connect to that address/port instead. Only the relay needs to accept inbound connections - players never need to open a port on their own end, and nobody else's server is involved unless you choose the default.
+The client's Direct Connect fields take any host/port — port `443` means "connect via `wss://<host>/dotnet`" (for a relay routed through a reverse proxy the way this project's own instance is, see below); anything else means a plain `ws://host:port` straight to whatever's running there. Run `server.js` somewhere reachable (a VPS, or your own machine with the port forwarded) and share that address with whoever you want to play with. Only the relay needs to accept inbound connections - players never need to open a port on their own end.
 
 ## How it works
 
