@@ -8,7 +8,7 @@
 AppId={{5E7982D5-978E-441A-954D-7D2BF0D93F61}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={autopf}\DOTnet Mod
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
