@@ -55,11 +55,30 @@ function removeClient(id) {
   console.log(`[-] player ${id} disconnected (${clients.size} connected)`);
 }
 
+// A connection arriving through the portal's local reverse proxy always has
+// 127.0.0.1 as its immediate TCP peer, which would otherwise turn the
+// per-IP cap into a global cap on all public traffic combined. Cloudflare
+// injects the real origin IP into CF-Connecting-IP/X-Forwarded-For on every
+// request it proxies - trust those ONLY when the peer is genuinely the
+// local proxy, since a direct (non-proxied) connection could set either
+// header to whatever it wants to dodge the cap.
+function getClientIp(req) {
+  const remote = req.socket.remoteAddress || 'unknown';
+  const isLoopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+  if (isLoopback) {
+    const cf = req.headers['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf) return cf;
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  }
+  return remote;
+}
+
 const wss = new WebSocket.Server({
   port: PORT,
   maxPayload: MAX_PAYLOAD_BYTES,
   verifyClient: (info, cb) => {
-    const ip = info.req.socket.remoteAddress || 'unknown';
+    const ip = getClientIp(info.req);
     if (clients.size >= MAX_CONNECTIONS) { cb(false, 503, 'Server full'); return; }
     if ((ipCounts.get(ip) || 0) >= MAX_CONNECTIONS_PER_IP) { cb(false, 429, 'Too many connections from this address'); return; }
     cb(true);
@@ -67,7 +86,7 @@ const wss = new WebSocket.Server({
 });
 
 wss.on('connection', (ws, req) => {
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = getClientIp(req);
   ipCounts.set(ip, (ipCounts.get(ip) || 0) + 1);
 
   const id = nextId++;
