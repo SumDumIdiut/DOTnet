@@ -332,8 +332,8 @@ internal class MpPanelUI : MonoBehaviour
 		header.fontSize = 20;
 		header.color = new Color(1f, 1f, 1f, 0.65f);
 
-		_hostField = CreateInputField(_directConnectSection.transform, new Vector2(-90, -160), new Vector2(380, 44), "127.0.0.1");
-		_portField = CreateInputField(_directConnectSection.transform, new Vector2(200, -160), new Vector2(160, 44), "7777");
+		_hostField = CreateInputField(_directConnectSection.transform, new Vector2(-90, -160), new Vector2(380, 44), "codecade.co.za");
+		_portField = CreateInputField(_directConnectSection.transform, new Vector2(200, -160), new Vector2(160, 44), "443");
 	}
 
 	private void OnEnable()
@@ -346,8 +346,8 @@ internal class MpPanelUI : MonoBehaviour
 	{
 		var mgr = MpNetworkManager.GetOrCreate();
 		if (mgr.IsConnected) { mgr.Disconnect(); return; }
-		if (!int.TryParse(_portField.text, out var port)) port = 7777;
-		var host = string.IsNullOrEmpty(_hostField.text) ? "127.0.0.1" : _hostField.text;
+		if (!int.TryParse(_portField.text, out var port)) port = 443;
+		var host = string.IsNullOrEmpty(_hostField.text) ? "codecade.co.za" : _hostField.text;
 		mgr.ConnectAsync(host, port);
 	}
 
