@@ -46,8 +46,6 @@ function Get-DotnetExe {
     Write-Host "No .NET SDK found - downloading a portable copy (one-time, roughly 200 MB)..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $localSdkDir | Out-Null
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
     try {
         $installScript = Join-Path $env:TEMP 'dotnet-install.ps1'
         Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript -UseBasicParsing
@@ -55,9 +53,6 @@ function Get-DotnetExe {
     }
     catch {
         Write-Warning "Portable .NET SDK download failed: $($_.Exception.Message)"
-    }
-    finally {
-        $ProgressPreference = $prevProgress
     }
 
     if (Test-Path $localDotnetExe) {
@@ -78,7 +73,7 @@ foreach ($t in $targets) {
     Write-Host "`n=== $($t.Name) ===" -ForegroundColor Cyan
 
     if (-not (Test-Path $t.GameDir)) {
-        Write-Warning "$($t.Name): not installed here, skipping."
+        Write-Host "$($t.Name): not installed here, skipping." -ForegroundColor DarkGray
         continue
     }
 
