@@ -1,0 +1,12 @@
+.claude/
+.vs/
+bin/
+obj/
+*.dll
+*.pdb
+*.user
+backup/
+*.log
+build/
+installer/build/
+installer/output/
