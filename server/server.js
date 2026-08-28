@@ -1,5 +1,5 @@
 
-const net = require('net');
+const WebSocket = require('ws');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 7777;
 const BROADCAST_HZ = 15;
@@ -7,21 +7,22 @@ const STALE_MS = 8000; // drop a player's last-known state if nothing arrives fo
 
 const MAX_CONNECTIONS = 500;
 const MAX_CONNECTIONS_PER_IP = 20;
-const MAX_BUFFER_BYTES = 8 * 1024;
+const MAX_PAYLOAD_BYTES = 8 * 1024;
 const MAX_MSGS_PER_SEC = 120; // real gameplay sends every 2 frames; this is generous headroom
-const IDLE_TIMEOUT_MS = 30 * 1000;
+const HEARTBEAT_MS = 15 * 1000;
 const MAX_LOBBIES = 500;
 const MAX_LOBBY_MEMBERS = 16;
 
 let nextId = 1;
 let nextLobbyId = 1;
-const clients = new Map();  // id -> { socket, buffer, name, lobbyId, ip, msgCount, msgWindowStart }
+const clients = new Map();  // id -> { ws, name, lobbyId, ip, msgCount, msgWindowStart }
 const states = new Map();   // id -> { x, y, facingRight, animHash, animTime, lastUpdate }
 const lobbies = new Map();  // lobbyId -> { name, hostId, members: Set<id> }
 const ipCounts = new Map(); // ip -> count of open connections
 
-function send(socket, obj) {
-  try { socket.write(JSON.stringify(obj) + '\n'); } catch (e) { /* socket already gone */ }
+function send(ws, obj) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  try { ws.send(JSON.stringify(obj)); } catch (e) { /* socket already gone */ }
 }
 
 function lobbySummary(lobbyId) {
@@ -54,68 +55,57 @@ function removeClient(id) {
   console.log(`[-] player ${id} disconnected (${clients.size} connected)`);
 }
 
-const server = net.createServer((socket) => {
-  const ip = socket.remoteAddress || 'unknown';
+const wss = new WebSocket.Server({
+  port: PORT,
+  maxPayload: MAX_PAYLOAD_BYTES,
+  verifyClient: (info, cb) => {
+    const ip = info.req.socket.remoteAddress || 'unknown';
+    if (clients.size >= MAX_CONNECTIONS) { cb(false, 503, 'Server full'); return; }
+    if ((ipCounts.get(ip) || 0) >= MAX_CONNECTIONS_PER_IP) { cb(false, 429, 'Too many connections from this address'); return; }
+    cb(true);
+  },
+});
 
-  if (clients.size >= MAX_CONNECTIONS) {
-    socket.destroy();
-    return;
-  }
-  const ipCount = ipCounts.get(ip) || 0;
-  if (ipCount >= MAX_CONNECTIONS_PER_IP) {
-    socket.destroy();
-    return;
-  }
-  ipCounts.set(ip, ipCount + 1);
+wss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress || 'unknown';
+  ipCounts.set(ip, (ipCounts.get(ip) || 0) + 1);
 
   const id = nextId++;
-  socket.setNoDelay(true);
-  socket.setTimeout(IDLE_TIMEOUT_MS, () => socket.destroy());
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   clients.set(id, {
-    socket, buffer: '', name: 'Player' + id, nameColor: '#FFFFFF', dotColor: '#3399FF',
+    ws, name: 'Player' + id, nameColor: '#FFFFFF', dotColor: '#3399FF',
     lobbyId: null, ip, msgCount: 0, msgWindowStart: Date.now(),
   });
-  send(socket, { type: 'welcome', id });
+  send(ws, { type: 'welcome', id });
   console.log(`[+] player ${id} connected from ${ip} (${clients.size} connected)`);
 
-  socket.on('data', (chunk) => {
+  ws.on('message', (data) => {
     const c = clients.get(id);
     if (!c) return;
 
-    if (c.buffer.length + chunk.length > MAX_BUFFER_BYTES) {
-      socket.destroy();
+    const now = Date.now();
+    if (now - c.msgWindowStart >= 1000) {
+      c.msgWindowStart = now;
+      c.msgCount = 0;
+    }
+    c.msgCount++;
+    if (c.msgCount > MAX_MSGS_PER_SEC) {
+      ws.close(1008, 'rate limit');
       return;
     }
-    c.buffer += chunk.toString('utf8');
 
-    let idx;
-    while ((idx = c.buffer.indexOf('\n')) >= 0) {
-      const line = c.buffer.slice(0, idx);
-      c.buffer = c.buffer.slice(idx + 1);
-      if (!line) continue;
+    let msg;
+    try { msg = JSON.parse(data.toString('utf8')); } catch (e) { return; }
+    if (!msg || typeof msg !== 'object') return;
 
-      const now = Date.now();
-      if (now - c.msgWindowStart >= 1000) {
-        c.msgWindowStart = now;
-        c.msgCount = 0;
-      }
-      c.msgCount++;
-      if (c.msgCount > MAX_MSGS_PER_SEC) {
-        socket.destroy();
-        return;
-      }
-
-      let msg;
-      try { msg = JSON.parse(line); } catch (e) { continue; }
-      if (!msg || typeof msg !== 'object') continue;
-
-      try { handleMessage(id, msg); } catch (e) { console.error(`[!] handleMessage error (player ${id}):`, e); }
-    }
+    try { handleMessage(id, msg); } catch (e) { console.error(`[!] handleMessage error (player ${id}):`, e); }
   });
 
   const cleanup = () => removeClient(id);
-  socket.on('close', cleanup);
-  socket.on('error', cleanup);
+  ws.on('close', cleanup);
+  ws.on('error', cleanup);
 });
 
 function clampNum(v, fallback, min, max) {
@@ -148,7 +138,7 @@ function handleMessage(id, msg) {
     }
     case 'host': {
       if (lobbies.size >= MAX_LOBBIES) {
-        send(c.socket, { type: 'join_failed', reason: 'Server is full' });
+        send(c.ws, { type: 'join_failed', reason: 'Server is full' });
         break;
       }
       // applied before any c.name read, including the default lobby-name fallback
@@ -158,13 +148,13 @@ function handleMessage(id, msg) {
       const name = (typeof msg.name === 'string' && msg.name.trim().length > 0) ? msg.name.slice(0, 32) : (c.name + "'s lobby");
       lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]) });
       c.lobbyId = lobbyId;
-      send(c.socket, { type: 'hosted', lobbyId, name });
+      send(c.ws, { type: 'hosted', lobbyId, name });
       console.log(`[lobby] ${id} hosted "${name}" (#${lobbyId})`);
       break;
     }
     case 'list_lobbies': {
       const list = [...lobbies.keys()].map(lobbySummary).filter(Boolean);
-      send(c.socket, { type: 'lobby_list', lobbies: list });
+      send(c.ws, { type: 'lobby_list', lobbies: list });
       break;
     }
     case 'join_lobby': {
@@ -172,23 +162,23 @@ function handleMessage(id, msg) {
       const lobbyId = msg.lobbyId | 0;
       const l = lobbies.get(lobbyId);
       if (!l) {
-        send(c.socket, { type: 'join_failed', reason: 'Lobby not found' });
+        send(c.ws, { type: 'join_failed', reason: 'Lobby not found' });
         break;
       }
       if (l.members.size >= MAX_LOBBY_MEMBERS) {
-        send(c.socket, { type: 'join_failed', reason: 'Lobby is full' });
+        send(c.ws, { type: 'join_failed', reason: 'Lobby is full' });
         break;
       }
       leaveLobby(id);
       l.members.add(id);
       c.lobbyId = lobbyId;
-      send(c.socket, { type: 'joined', lobbyId, name: l.name });
+      send(c.ws, { type: 'joined', lobbyId, name: l.name });
       console.log(`[lobby] ${id} joined "${l.name}" (#${lobbyId})`);
       break;
     }
     case 'leave_lobby': {
       leaveLobby(id);
-      send(c.socket, { type: 'left' });
+      send(c.ws, { type: 'left' });
       break;
     }
     case 'chat': {
@@ -199,7 +189,7 @@ function handleMessage(id, msg) {
       if (!text) break;
       for (const memberId of l.members) {
         const mc = clients.get(memberId);
-        if (mc) send(mc.socket, { type: 'chat', from: c.name, fromColor: c.nameColor, text });
+        if (mc) send(mc.ws, { type: 'chat', from: c.name, fromColor: c.nameColor, text });
       }
       console.log(`[chat] #${c.lobbyId} ${c.name}: ${text}`);
       break;
@@ -228,7 +218,7 @@ setInterval(() => {
     for (const id of members) {
       const c = clients.get(id);
       if (!c) continue;
-      send(c.socket, {
+      send(c.ws, {
         type: 'snapshot',
         players: all.filter((p) => p.id !== id).map(({ lastUpdate, ...rest }) => rest),
       });
@@ -236,17 +226,26 @@ setInterval(() => {
   }
 }, 1000 / BROADCAST_HZ);
 
+// ws has no built-in idle timeout (unlike a raw socket's setTimeout) -- a
+// standard ping/pong heartbeat instead, terminating anything that didn't
+// answer the previous ping.
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) { /* already gone */ }
+  });
+}, HEARTBEAT_MS);
+
 process.on('uncaughtException', (e) => console.error('[!] uncaught exception:', e));
 process.on('unhandledRejection', (e) => console.error('[!] unhandled rejection:', e));
 
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, () => {
     console.log(`[i] ${sig} received, shutting down`);
-    server.close(() => process.exit(0));
+    wss.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   });
 }
 
-server.listen(PORT, () => {
-  console.log(`IGTAP multiplayer relay listening on :${PORT}`);
-});
+console.log(`IGTAP multiplayer relay (WebSocket) listening on :${PORT}`);
