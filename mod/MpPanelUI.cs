@@ -332,8 +332,8 @@ internal class MpPanelUI : MonoBehaviour
 		header.fontSize = 20;
 		header.color = new Color(1f, 1f, 1f, 0.65f);
 
-		_hostField = CreateInputField(_directConnectSection.transform, new Vector2(-90, -160), new Vector2(380, 44), "203.0.113.1");
-		_portField = CreateInputField(_directConnectSection.transform, new Vector2(200, -160), new Vector2(160, 44), "7777");
+		_hostField = CreateInputField(_directConnectSection.transform, new Vector2(-90, -160), new Vector2(380, 44), "Server IP");
+		_portField = CreateInputField(_directConnectSection.transform, new Vector2(200, -160), new Vector2(160, 44), "Port");
 	}
 
 	private void OnEnable()

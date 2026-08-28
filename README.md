@@ -2,7 +2,7 @@
 
 Cosmetic multiplayer for *IGTAP: An Incremental Game That's Also a Platformer* (Playtest and Demo Steam builds). Patches `Assembly-CSharp.dll` directly — no BepInEx, no mod loader. Other players show up as ghosts synced over a small relay server: position, facing, animation, name, and colour. No shared game state, no physics.
 
-Clicking Connect with the Direct Connect fields untouched reaches a public relay at `wss://codecade.co.za/dotnet` — install and play, no server setup needed. That address is never shown on screen though: the fields display a non-functional example (`203.0.113.1:7777`) as their placeholder, not the real one, so a screenshot or stream of the panel doesn't leak it. Type a real host/port to use a different relay instead; see [Server](#server).
+Clicking Connect with the Direct Connect fields untouched reaches a public relay at `wss://codecade.co.za/dotnet` — install and play, no server setup needed. That address is never shown on screen though: the fields just read "Server IP" / "Port" until you type something, so a screenshot or stream of the panel doesn't leak it. Type a real host/port to use a different relay instead; see [Server](#server).
 
 ## Layout
 
