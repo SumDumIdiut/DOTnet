@@ -346,8 +346,8 @@ internal class MpPanelUI : MonoBehaviour
 	{
 		var mgr = MpNetworkManager.GetOrCreate();
 		if (mgr.IsConnected) { mgr.Disconnect(); return; }
-		if (!int.TryParse(_portField.text, out var port)) port = 7777;
-		var host = string.IsNullOrEmpty(_hostField.text) ? "203.0.113.1" : _hostField.text;
+		if (!int.TryParse(_portField.text, out var port)) port = 443;
+		var host = string.IsNullOrEmpty(_hostField.text) ? "codecade.co.za" : _hostField.text;
 		mgr.ConnectAsync(host, port);
 	}
 
