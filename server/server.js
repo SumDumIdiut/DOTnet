@@ -5,11 +5,20 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 7777;
 const BROADCAST_HZ = 15;
 const STALE_MS = 8000; // drop a player's last-known state if nothing arrives for this long
 
+const MAX_CONNECTIONS = 500;
+const MAX_CONNECTIONS_PER_IP = 20;
+const MAX_BUFFER_BYTES = 8 * 1024;
+const MAX_MSGS_PER_SEC = 120; // real gameplay sends every 2 frames; this is generous headroom
+const IDLE_TIMEOUT_MS = 30 * 1000;
+const MAX_LOBBIES = 500;
+const MAX_LOBBY_MEMBERS = 16;
+
 let nextId = 1;
 let nextLobbyId = 1;
-const clients = new Map();  // id -> { socket, buffer, name, lobbyId }
+const clients = new Map();  // id -> { socket, buffer, name, lobbyId, ip, msgCount, msgWindowStart }
 const states = new Map();   // id -> { x, y, facingRight, animHash, animTime, lastUpdate }
 const lobbies = new Map();  // lobbyId -> { name, hostId, members: Set<id> }
+const ipCounts = new Map(); // ip -> count of open connections
 
 function send(socket, obj) {
   try { socket.write(JSON.stringify(obj) + '\n'); } catch (e) { /* socket already gone */ }
@@ -34,6 +43,11 @@ function leaveLobby(id) {
 }
 
 function removeClient(id) {
+  const c = clients.get(id);
+  if (c) {
+    const n = (ipCounts.get(c.ip) || 1) - 1;
+    if (n <= 0) ipCounts.delete(c.ip); else ipCounts.set(c.ip, n);
+  }
   leaveLobby(id);
   clients.delete(id);
   states.delete(id);
@@ -41,24 +55,61 @@ function removeClient(id) {
 }
 
 const server = net.createServer((socket) => {
+  const ip = socket.remoteAddress || 'unknown';
+
+  if (clients.size >= MAX_CONNECTIONS) {
+    socket.destroy();
+    return;
+  }
+  const ipCount = ipCounts.get(ip) || 0;
+  if (ipCount >= MAX_CONNECTIONS_PER_IP) {
+    socket.destroy();
+    return;
+  }
+  ipCounts.set(ip, ipCount + 1);
+
   const id = nextId++;
   socket.setNoDelay(true);
-  clients.set(id, { socket, buffer: '', name: 'Player' + id, nameColor: '#FFFFFF', dotColor: '#3399FF', lobbyId: null });
+  socket.setTimeout(IDLE_TIMEOUT_MS, () => socket.destroy());
+  clients.set(id, {
+    socket, buffer: '', name: 'Player' + id, nameColor: '#FFFFFF', dotColor: '#3399FF',
+    lobbyId: null, ip, msgCount: 0, msgWindowStart: Date.now(),
+  });
   send(socket, { type: 'welcome', id });
-  console.log(`[+] player ${id} connected from ${socket.remoteAddress} (${clients.size} connected)`);
+  console.log(`[+] player ${id} connected from ${ip} (${clients.size} connected)`);
 
   socket.on('data', (chunk) => {
     const c = clients.get(id);
     if (!c) return;
+
+    if (c.buffer.length + chunk.length > MAX_BUFFER_BYTES) {
+      socket.destroy();
+      return;
+    }
     c.buffer += chunk.toString('utf8');
+
     let idx;
     while ((idx = c.buffer.indexOf('\n')) >= 0) {
       const line = c.buffer.slice(0, idx);
       c.buffer = c.buffer.slice(idx + 1);
       if (!line) continue;
+
+      const now = Date.now();
+      if (now - c.msgWindowStart >= 1000) {
+        c.msgWindowStart = now;
+        c.msgCount = 0;
+      }
+      c.msgCount++;
+      if (c.msgCount > MAX_MSGS_PER_SEC) {
+        socket.destroy();
+        return;
+      }
+
       let msg;
       try { msg = JSON.parse(line); } catch (e) { continue; }
-      handleMessage(id, msg);
+      if (!msg || typeof msg !== 'object') continue;
+
+      try { handleMessage(id, msg); } catch (e) { console.error(`[!] handleMessage error (player ${id}):`, e); }
     }
   });
 
@@ -66,6 +117,13 @@ const server = net.createServer((socket) => {
   socket.on('close', cleanup);
   socket.on('error', cleanup);
 });
+
+function clampNum(v, fallback, min, max) {
+  if (!Number.isFinite(v)) return fallback;
+  if (v < min) return min;
+  if (v > max) return max;
+  return v;
+}
 
 function handleMessage(id, msg) {
   const c = clients.get(id);
@@ -79,16 +137,20 @@ function handleMessage(id, msg) {
       if (hexRe.test(msg.nameColor)) c.nameColor = msg.nameColor;
       if (hexRe.test(msg.dotColor)) c.dotColor = msg.dotColor;
       states.set(id, {
-        x: typeof msg.x === 'number' ? msg.x : 0,
-        y: typeof msg.y === 'number' ? msg.y : 0,
+        x: clampNum(msg.x, 0, -1e6, 1e6),
+        y: clampNum(msg.y, 0, -1e6, 1e6),
         facingRight: !!msg.facingRight,
-        animHash: msg.animHash | 0,
-        animTime: typeof msg.animTime === 'number' ? msg.animTime : 0,
+        animHash: Number.isFinite(msg.animHash) ? (msg.animHash | 0) : 0,
+        animTime: clampNum(msg.animTime, 0, -1e6, 1e6),
         lastUpdate: Date.now(),
       });
       break;
     }
     case 'host': {
+      if (lobbies.size >= MAX_LOBBIES) {
+        send(c.socket, { type: 'join_failed', reason: 'Server is full' });
+        break;
+      }
       // applied before any c.name read, including the default lobby-name fallback
       if (typeof msg.playerName === 'string' && msg.playerName.trim().length > 0) c.name = msg.playerName.slice(0, 24);
       leaveLobby(id);
@@ -111,6 +173,10 @@ function handleMessage(id, msg) {
       const l = lobbies.get(lobbyId);
       if (!l) {
         send(c.socket, { type: 'join_failed', reason: 'Lobby not found' });
+        break;
+      }
+      if (l.members.size >= MAX_LOBBY_MEMBERS) {
+        send(c.socket, { type: 'join_failed', reason: 'Lobby is full' });
         break;
       }
       leaveLobby(id);
@@ -169,6 +235,17 @@ setInterval(() => {
     }
   }
 }, 1000 / BROADCAST_HZ);
+
+process.on('uncaughtException', (e) => console.error('[!] uncaught exception:', e));
+process.on('unhandledRejection', (e) => console.error('[!] unhandled rejection:', e));
+
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    console.log(`[i] ${sig} received, shutting down`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2000).unref();
+  });
+}
 
 server.listen(PORT, () => {
   console.log(`IGTAP multiplayer relay listening on :${PORT}`);
