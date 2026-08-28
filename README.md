@@ -15,7 +15,7 @@ Clicking Connect with the Direct Connect fields untouched reaches a public relay
 
 Run the installer (`.exe`, from a release, or built yourself per below). It detects whichever of Playtest/Demo you have installed, decompiles each one's own `Assembly-CSharp.dll`, applies the mod, rebuilds, and deploys — keeping a backup of the true original so uninstalling restores it exactly.
 
-Requires the .NET SDK on the machine running the installer (it does a real build). Get it from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) if `dotnet --list-sdks` comes back empty.
+It does a real build, so it needs a .NET SDK — if it can't find one on your system already, it downloads a portable copy automatically (one-time, cached for next time) rather than requiring you to install anything yourself.
 
 ## Building the installer yourself
 
