@@ -34,7 +34,40 @@ $targets = if ($Target -eq 'Both') { $allTargets } else { $allTargets | Where-Ob
 function Get-DotnetExe {
     $sdks = & dotnet --list-sdks 2>$null
     if ($LASTEXITCODE -eq 0 -and $sdks) { return 'dotnet' }
-    throw "No .NET SDK found. Install the .NET SDK (dotnet.microsoft.com/download) and run this installer again."
+
+    # most players won't have a system SDK - fetch a portable one instead of just erroring out
+    $localSdkDir = Join-Path $root '.dotnet-sdk'
+    $localDotnetExe = Join-Path $localSdkDir 'dotnet.exe'
+    if (Test-Path $localDotnetExe) {
+        $sdks = & $localDotnetExe --list-sdks 2>$null
+        if ($LASTEXITCODE -eq 0 -and $sdks) { return $localDotnetExe }
+    }
+
+    Write-Host "No .NET SDK found - downloading a portable copy (one-time, roughly 200 MB)..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force -Path $localSdkDir | Out-Null
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $prevProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        $installScript = Join-Path $env:TEMP 'dotnet-install.ps1'
+        Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript -UseBasicParsing
+        & $installScript -Channel LTS -InstallDir $localSdkDir -NoPath
+    }
+    catch {
+        Write-Warning "Portable .NET SDK download failed: $($_.Exception.Message)"
+    }
+    finally {
+        $ProgressPreference = $prevProgress
+    }
+
+    if (Test-Path $localDotnetExe) {
+        $sdks = & $localDotnetExe --list-sdks 2>$null
+        if ($LASTEXITCODE -eq 0 -and $sdks) {
+            Write-Host "Portable .NET SDK ready." -ForegroundColor Green
+            return $localDotnetExe
+        }
+    }
+    throw "Could not obtain a .NET SDK (none installed, and the automatic portable download failed - check your internet connection). Install the .NET SDK from https://dotnet.microsoft.com/download and run this installer again."
 }
 
 $dotnetExe = Get-DotnetExe

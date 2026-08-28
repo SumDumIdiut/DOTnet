@@ -12,3 +12,4 @@ installer/build/
 installer/output/
 installer/tools/
 installer/mod/
+installer/.dotnet-sdk/
