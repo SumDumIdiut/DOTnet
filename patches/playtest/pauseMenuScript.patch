@@ -1,0 +1,16 @@
+--- a/pauseMenuScript.cs
++++ b/pauseMenuScript.cs
+@@ -136,8 +136,13 @@
+ 				startButtonText.StringReference = startButtonNewGame;
+ 			}
+ 		}
++		try { MpMenuBuilder.Install(this); }
++		catch (System.Exception e) { Debug.LogError("[Multiplayer] menu install failed: " + e); }
+ 	}
+ 
++	public GameObject mainBitPublic => mainBit;
++	public GameObject settingsBitPublic => settingsBit;
++
+ 	private void Start()
+ 	{
+ 		startHasRun = true;
