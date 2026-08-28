@@ -10,3 +10,5 @@ backup/
 build/
 installer/build/
 installer/output/
+installer/tools/
+installer/mod/
