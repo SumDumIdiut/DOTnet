@@ -31,19 +31,39 @@ function Set-Status([string]$text) {
 $gameDir = "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That's Also a Platformer Demo"
 $awakeAnchor = "`t`t`tdeleteSaveButton.text = deleteSaveMessages[0].GetLocalizedString();`r`n`t`t}"
 
+# ilspycmd is a real published .NET tool with its own target framework - an
+# installed SDK that's merely *present* isn't enough, it has to be new enough
+# to actually run ilspycmd.dll. Read the requirement from ilspycmd's own
+# runtimeconfig.json rather than hardcoding it, so this keeps working if the
+# staged ilspycmd build is ever upgraded to target something newer.
+$RequiredSdkMajor = 6
+$ilspycmdRuntimeConfig = Join-Path $root 'tools\ilspycmd\ilspycmd.runtimeconfig.json'
+if (Test-Path $ilspycmdRuntimeConfig) {
+    try {
+        $cfg = Get-Content $ilspycmdRuntimeConfig -Raw | ConvertFrom-Json
+        $RequiredSdkMajor = [int](($cfg.runtimeOptions.framework.version) -split '\.')[0]
+    }
+    catch { }
+}
+
+function Test-SdkCompatible([string]$dotnetExePath) {
+    $sdks = & $dotnetExePath --list-sdks 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $sdks) { return $false }
+    foreach ($line in $sdks) {
+        if ($line -match '^(\d+)\.' -and [int]$Matches[1] -ge $RequiredSdkMajor) { return $true }
+    }
+    return $false
+}
+
 function Get-DotnetExe {
-    $sdks = & dotnet --list-sdks 2>$null
-    if ($LASTEXITCODE -eq 0 -and $sdks) { return 'dotnet' }
+    if (Test-SdkCompatible 'dotnet') { return 'dotnet' }
 
     $localSdkDir = Join-Path $root '.dotnet-sdk'
     $localDotnetExe = Join-Path $localSdkDir 'dotnet.exe'
-    if (Test-Path $localDotnetExe) {
-        $sdks = & $localDotnetExe --list-sdks 2>$null
-        if ($LASTEXITCODE -eq 0 -and $sdks) { return $localDotnetExe }
-    }
+    if ((Test-Path $localDotnetExe) -and (Test-SdkCompatible $localDotnetExe)) { return $localDotnetExe }
 
     if ($NoSdkDownload) {
-        throw "No .NET SDK available and automatic download was declined."
+        throw "No .NET $RequiredSdkMajor+ SDK available and automatic download was declined."
     }
 
     Set-Status "Downloading the .NET SDK (one-time, roughly 200 MB)..."
@@ -52,17 +72,14 @@ function Get-DotnetExe {
     try {
         $installScript = Join-Path $env:TEMP 'dotnet-install.ps1'
         Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript -UseBasicParsing
-        & $installScript -Channel LTS -InstallDir $localSdkDir -NoPath *> (Join-Path $env:TEMP 'dotnet-sdk-install.log')
+        & $installScript -Channel "$RequiredSdkMajor.0" -InstallDir $localSdkDir -NoPath *> (Join-Path $env:TEMP 'dotnet-sdk-install.log')
     }
     catch {
         Set-Status "Portable .NET SDK download failed: $($_.Exception.Message)"
     }
 
-    if (Test-Path $localDotnetExe) {
-        $sdks = & $localDotnetExe --list-sdks 2>$null
-        if ($LASTEXITCODE -eq 0 -and $sdks) { return $localDotnetExe }
-    }
-    throw "Could not obtain a .NET SDK (none installed, and the automatic portable download failed - check your internet connection)."
+    if ((Test-Path $localDotnetExe) -and (Test-SdkCompatible $localDotnetExe)) { return $localDotnetExe }
+    throw "Could not obtain a .NET $RequiredSdkMajor+ SDK (none installed, and the automatic portable download failed or didn't provide a compatible version - check your internet connection)."
 }
 
 try {
