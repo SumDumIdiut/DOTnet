@@ -32,7 +32,8 @@ internal class MpPanelUI : MonoBehaviour
 	private TMP_Text _inLobbyLabel;
 	private TMP_Text _playersLabel;
 	private GameObject _chatBox;
-	private TMP_Text _chatLogText;
+	private Transform _chatLogContainer;
+	private readonly List<GameObject> _chatLogRows = new List<GameObject>();
 	private TMP_InputField _chatInputField;
 	private int _lastChatLineCount = -1;
 
@@ -272,11 +273,15 @@ internal class MpPanelUI : MonoBehaviour
 		ApplyRoundedBoxStyle(boxImg, Color.white);
 		_chatBox.AddComponent<RectMask2D>();
 
-		_chatLogText = CreateLabel(_chatBox.transform, "ChatLog", new Vector2(0, 0), new Vector2(560, 180), "");
-		_chatLogText.alignment = TextAlignmentOptions.TopLeft;
-		_chatLogText.fontSize = 18;
-		_chatLogText.enableWordWrapping = true;
-		_chatLogText.color = new Color(1f, 1f, 1f, 0.9f);
+		var chatLogGo = new GameObject("ChatLog", typeof(RectTransform));
+		chatLogGo.transform.SetParent(_chatBox.transform, false);
+		var chatLogRt = (RectTransform)chatLogGo.transform;
+		chatLogRt.anchorMin = new Vector2(0.5f, 0.5f);
+		chatLogRt.anchorMax = new Vector2(0.5f, 0.5f);
+		chatLogRt.pivot = new Vector2(0.5f, 1f);
+		chatLogRt.anchoredPosition = new Vector2(0, 90);
+		chatLogRt.sizeDelta = new Vector2(560, 180);
+		_chatLogContainer = chatLogGo.transform;
 
 		_chatInputField = CreateInputField(parent, new Vector2(-150, -115), new Vector2(260, 44), "Say something...");
 		var sendGo = CloneButton(parent, "Send", new Vector2(140, -115), new Vector2(280, 60));
@@ -478,28 +483,75 @@ internal class MpPanelUI : MonoBehaviour
 		_playersLabel.text = sb.ToString();
 	}
 
+	private TMP_Text _chatMeasurer;
+
+	private float MeasureChatLineHeight(string text, float width)
+	{
+		if (_chatMeasurer == null)
+		{
+			var go = new GameObject("ChatMeasurer", typeof(RectTransform));
+			go.transform.SetParent(_chatBox.transform, false);
+			_chatMeasurer = go.AddComponent<TextMeshProUGUI>();
+			_chatMeasurer.font = _font;
+			_chatMeasurer.fontSize = 18;
+			_chatMeasurer.enableWordWrapping = true;
+			go.SetActive(false);
+		}
+		return _chatMeasurer.GetPreferredValues(text, width, 0f).y;
+	}
+
 	private void RefreshChatLog(List<string> chatLines)
 	{
 		if (chatLines.Count == _lastChatLineCount) return;
 		_lastChatLineCount = chatLines.Count;
 
-		if (chatLines.Count == 0) { _chatLogText.text = ""; return; }
+		foreach (var row in _chatLogRows) Object.Destroy(row);
+		_chatLogRows.Clear();
+		if (chatLines.Count == 0) return;
 
-		// entries can wrap to more than one rendered line, so trim by actual
-		// rendered line count rather than entry count - otherwise a run of long
-		// messages overflows the box instead of scrolling
-		const int maxVisibleLines = 8;
-		var joined = chatLines[chatLines.Count - 1];
-		for (int i = chatLines.Count - 2; i >= 0; i--)
+		const float containerWidth = 560f;
+		const float containerHeight = 178f;
+
+		// walk backward from the newest message, keeping whatever actually fits
+		// within the box's real height - measured directly against a known fixed
+		// width instead of trusting a shared TMP component's own rect to already
+		// be laid out by the time it's queried. That mismatch was letting too
+		// much text through, pushing the newest messages past the bottom of the
+		// (masked) box where they rendered invisibly instead of scrolling.
+		var kept = new List<(string line, float height)>();
+		float used = 0f;
+		for (int i = chatLines.Count - 1; i >= 0; i--)
 		{
-			var candidate = chatLines[i] + "\n" + joined;
-			_chatLogText.text = candidate;
-			_chatLogText.ForceMeshUpdate();
-			if (_chatLogText.textInfo.lineCount > maxVisibleLines) break;
-			joined = candidate;
+			var line = chatLines[i];
+			var height = MeasureChatLineHeight(line, containerWidth);
+			if (used + height > containerHeight && kept.Count > 0) break;
+			kept.Insert(0, (line, height));
+			used += height;
 		}
-		_chatLogText.text = joined;
-		_chatLogText.ForceMeshUpdate();
+
+		float y = 0f;
+		foreach (var (line, height) in kept)
+		{
+			var rowGo = new GameObject("ChatLine", typeof(RectTransform));
+			rowGo.transform.SetParent(_chatLogContainer, false);
+			var rowRt = (RectTransform)rowGo.transform;
+			rowRt.anchorMin = new Vector2(0, 1);
+			rowRt.anchorMax = new Vector2(1, 1);
+			rowRt.pivot = new Vector2(0.5f, 1f);
+			rowRt.anchoredPosition = new Vector2(0, -y);
+			rowRt.sizeDelta = new Vector2(0, height);
+
+			var tmp = rowGo.AddComponent<TextMeshProUGUI>();
+			tmp.font = _font;
+			tmp.fontSize = 18;
+			tmp.alignment = TextAlignmentOptions.TopLeft;
+			tmp.enableWordWrapping = true;
+			tmp.color = new Color(1f, 1f, 1f, 0.9f);
+			tmp.text = line;
+
+			y += height;
+			_chatLogRows.Add(rowGo);
+		}
 	}
 
 	private void RefreshLobbyList(List<MpLobbyInfo> lobbies)
@@ -519,8 +571,17 @@ internal class MpPanelUI : MonoBehaviour
 		// rows get destroyed and rebuilt below - if one of them was the selected UI
 		// object (mouse clicks set this in Unity even with navigation off) that
 		// reference goes stale and can leave a hover/selected tint stuck on whatever
-		// happens to end up in the same spot next
-		if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+		// happens to end up in the same spot next. Only clear selection when it's
+		// actually one of these rows though - this runs on the same ~1.5s poll that
+		// keeps the lobby list fresh while the Host row (with its own Lobby name
+		// input field) is visible, and blindly clearing selection was kicking that
+		// field's focus out from under anyone mid-typing.
+		if (EventSystem.current != null)
+		{
+			var selected = EventSystem.current.currentSelectedGameObject;
+			if (selected != null && selected.transform.IsChildOf(_listContent.transform))
+				EventSystem.current.SetSelectedGameObject(null);
+		}
 
 		foreach (var row in _lobbyListRows) Object.Destroy(row);
 		_lobbyListRows.Clear();
