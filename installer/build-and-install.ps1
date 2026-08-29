@@ -55,7 +55,7 @@ function Get-DotnetExe {
         & $installScript -Channel LTS -InstallDir $localSdkDir -NoPath *> (Join-Path $env:TEMP 'dotnet-sdk-install.log')
     }
     catch {
-        Write-Warning "Portable .NET SDK download failed: $($_.Exception.Message)"
+        Set-Status "Portable .NET SDK download failed: $($_.Exception.Message)"
     }
 
     if (Test-Path $localDotnetExe) {
@@ -152,6 +152,9 @@ $refXml
     Copy-Item $built $deployed -Force
     Set-Status "Installed."
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+}
+catch {
+    Set-Status "Failed: $($_.Exception.Message)"
 }
 finally {
     if ($StatusFile) { Add-Content -Path $StatusFile -Value 'STATUS_DONE' }

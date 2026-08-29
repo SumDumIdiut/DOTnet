@@ -29,6 +29,7 @@ Source: "tools\ilspycmd\*"; DestDir: "{app}\tools\ilspycmd"; Flags: ignoreversio
 [Code]
 var
   ProgressPage: TOutputProgressWizardPage;
+  LastBuildStatus: string;
 
 function IsGameRunning(): Boolean;
 var
@@ -96,12 +97,13 @@ end;
 procedure RunBuildScript(AllowSdkDownload: Boolean);
 var
   ResultCode: Integer;
-  StatusFilePath, Params, LastText: string;
+  StatusFilePath, Params: string;
   Content: AnsiString;
   Iterations: Integer;
 begin
   StatusFilePath := ExpandConstant('{tmp}\dotnet_mod_status.txt');
   DeleteFile(StatusFilePath);
+  LastBuildStatus := '';
 
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\build-and-install.ps1') +
     '" -StatusFile "' + StatusFilePath + '"';
@@ -117,7 +119,6 @@ begin
       Exit;
     end;
 
-    LastText := '';
     Iterations := 0;
     while True do
     begin
@@ -126,10 +127,10 @@ begin
       if LoadStringFromFile(StatusFilePath, Content) then
       begin
         if Pos('STATUS_DONE', Content) > 0 then Break;
-        if Content <> LastText then
+        if Content <> LastBuildStatus then
         begin
           ProgressPage.SetText(Content, '');
-          LastText := Content;
+          LastBuildStatus := Content;
         end;
       end;
       // ~10 minute safety net in case something hangs with no status update at all
@@ -180,7 +181,8 @@ begin
     if CheckInstalled() then
       MsgBox('Installed! Look for "Multiplayer" in the pause menu.', mbInformation, MB_OK)
     else
-      MsgBox('Something went wrong - check your internet connection and try running the installer again.', mbError, MB_OK);
+      MsgBox('Something went wrong: ' + LastBuildStatus + #13#10#13#10 +
+        'Try running the installer again - if it keeps happening, report the message above.', mbError, MB_OK);
   end;
 end;
 

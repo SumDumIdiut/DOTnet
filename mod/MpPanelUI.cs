@@ -294,7 +294,9 @@ internal class MpPanelUI : MonoBehaviour
 		var refreshGo = CloneButton(_listBox.transform, "Refresh", new Vector2(235, 70), new Vector2(130, 32), "Refresh");
 		var refreshLabel = refreshGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
 		if (refreshLabel != null) refreshLabel.fontSize = 18f;
-		refreshGo.GetComponent<Button>().onClick.AddListener(() => MpNetworkManager.GetOrCreate().RequestLobbyList());
+		var refreshButton = refreshGo.GetComponent<Button>();
+		refreshButton.navigation = new Navigation { mode = Navigation.Mode.None };
+		refreshButton.onClick.AddListener(() => MpNetworkManager.GetOrCreate().RequestLobbyList());
 
 		_listContent = new GameObject("LobbyListContent", typeof(RectTransform));
 		_listContent.transform.SetParent(_listBox.transform, false);
@@ -305,6 +307,7 @@ internal class MpPanelUI : MonoBehaviour
 		// it measured out fine). Paging avoids the whole masking question.
 		var prevGo = CloneButton(_listBox.transform, "PrevPage", new Vector2(-230, -68), new Vector2(100, 30), "< Prev");
 		_prevPageButton = prevGo.GetComponent<Button>();
+		_prevPageButton.navigation = new Navigation { mode = Navigation.Mode.None };
 		_prevPageButton.onClick.AddListener(() => { _lobbyPageIndex--; RefreshLobbyList(MpNetworkManager.GetOrCreate().LastLobbyList); });
 		var prevLabel = prevGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
 		if (prevLabel != null) prevLabel.fontSize = 16f;
@@ -315,6 +318,7 @@ internal class MpPanelUI : MonoBehaviour
 
 		var nextGo = CloneButton(_listBox.transform, "NextPage", new Vector2(230, -68), new Vector2(100, 30), "Next >");
 		_nextPageButton = nextGo.GetComponent<Button>();
+		_nextPageButton.navigation = new Navigation { mode = Navigation.Mode.None };
 		_nextPageButton.onClick.AddListener(() => { _lobbyPageIndex++; RefreshLobbyList(MpNetworkManager.GetOrCreate().LastLobbyList); });
 		var nextLabel = nextGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
 		if (nextLabel != null) nextLabel.fontSize = 16f;
@@ -476,6 +480,12 @@ internal class MpPanelUI : MonoBehaviour
 
 	private void RefreshLobbyList(List<MpLobbyInfo> lobbies)
 	{
+		// rows get destroyed and rebuilt below - if one of them was the selected UI
+		// object (mouse clicks set this in Unity even with navigation off) that
+		// reference goes stale and can leave a hover/selected tint stuck on whatever
+		// happens to end up in the same spot next
+		if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+
 		foreach (var row in _lobbyListRows) Object.Destroy(row);
 		_lobbyListRows.Clear();
 		lobbies ??= new List<MpLobbyInfo>();
@@ -621,6 +631,7 @@ internal class MpPanelUI : MonoBehaviour
 
 		var button = go.GetComponent<Button>();
 		button.onClick = new Button.ButtonClickedEvent();
+		button.navigation = new Navigation { mode = Navigation.Mode.None };
 		return go;
 	}
 
