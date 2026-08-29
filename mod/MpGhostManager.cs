@@ -143,14 +143,16 @@ internal static class MpGhostManager
 		var labelGo = new GameObject("Label");
 		labelGo.transform.SetParent(root.transform);
 		// this game's world units run large (camera offsets elsewhere in Movement.cs
-		// are in the hundreds) - the old characterSize/offset (1.2, 40) were sized for
-		// a typical "1 unit ~= 1 metre" convention and rendered as a barely-visible
-		// speck here instead of a readable nametag
-		labelGo.transform.localPosition = new Vector3(0f, 110f, 0f);
+		// are in the hundreds) - the original characterSize/offset (1.2, 40) were sized
+		// for a typical "1 unit ~= 1 metre" convention and rendered as a barely-visible
+		// speck. First attempt at scaling that up (40, 110) overshot hugely (confirmed
+		// live - the name rendered taller than the character itself); this is that
+		// same jump scaled back down to roughly a quarter of the character's height
+		labelGo.transform.localPosition = new Vector3(0f, 75f, 0f);
 		var tm = labelGo.AddComponent<TextMesh>();
 		tm.text = string.IsNullOrEmpty(name) ? "?" : name;
 		tm.fontSize = 48;
-		tm.characterSize = 40f;
+		tm.characterSize = 8f;
 		// MiddleCenter instead of LowerCenter: anchoring off the bottom placed each name
 		// at a slightly different height depending on whether it had descenders (g/y/j/
 		// p/q) or not, since the baseline is fixed but the text's own bounds aren't -
