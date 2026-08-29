@@ -285,9 +285,33 @@ internal class MpPanelUI : MonoBehaviour
 		header.fontSize = 20;
 		header.color = new Color(1f, 1f, 1f, 0.65f);
 
+		// more than a handful of lobbies overflowed the box outright before - a real
+		// scroll view clips to the visible area and lets the rest scroll into view
+		// instead of spilling over whatever UI sits below the box
+		var viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+		viewportGo.transform.SetParent(_listBox.transform, false);
+		var viewportRt = (RectTransform)viewportGo.transform;
+		viewportRt.anchorMin = Vector2.zero;
+		viewportRt.anchorMax = Vector2.one;
+		viewportRt.offsetMin = new Vector2(20, 8);
+		viewportRt.offsetMax = new Vector2(-20, -28);
+
 		_listContent = new GameObject("LobbyListContent", typeof(RectTransform));
-		_listContent.transform.SetParent(_listBox.transform, false);
-		((RectTransform)_listContent.transform).anchoredPosition = new Vector2(0, 35);
+		_listContent.transform.SetParent(viewportGo.transform, false);
+		var contentRt = (RectTransform)_listContent.transform;
+		contentRt.anchorMin = new Vector2(0, 1);
+		contentRt.anchorMax = new Vector2(1, 1);
+		contentRt.pivot = new Vector2(0.5f, 1f);
+		contentRt.anchoredPosition = Vector2.zero;
+		contentRt.sizeDelta = new Vector2(0, viewportRt.rect.height);
+
+		var scrollRect = _listBox.AddComponent<ScrollRect>();
+		scrollRect.content = contentRt;
+		scrollRect.viewport = viewportRt;
+		scrollRect.horizontal = false;
+		scrollRect.vertical = true;
+		scrollRect.movementType = ScrollRect.MovementType.Clamped;
+		scrollRect.scrollSensitivity = 24f;
 	}
 
 	private static Sprite _cachedBoxSprite;
@@ -449,9 +473,13 @@ internal class MpPanelUI : MonoBehaviour
 		foreach (var row in _lobbyListRows) Object.Destroy(row);
 		_lobbyListRows.Clear();
 
+		var viewportRt = (RectTransform)_listContent.transform.parent;
+		var contentRt = (RectTransform)_listContent.transform;
+
 		if (lobbies == null || lobbies.Count == 0)
 		{
-			var emptyGo = CreateLabel(_listContent.transform, "EmptyLabel", new Vector2(0, 0), new Vector2(500, 30), "(no open lobbies yet)").gameObject;
+			contentRt.sizeDelta = new Vector2(0, viewportRt.rect.height);
+			var emptyGo = CreateLabel(_listContent.transform, "EmptyLabel", new Vector2(0, -60), new Vector2(500, 30), "(no open lobbies yet)").gameObject;
 			emptyGo.GetComponent<TMP_Text>().color = new Color(1f, 1f, 1f, 0.5f);
 			_lobbyListRows.Add(emptyGo);
 			return;
@@ -459,6 +487,7 @@ internal class MpPanelUI : MonoBehaviour
 
 		float y = 0f;
 		const float rowSpacing = 48f;
+		contentRt.sizeDelta = new Vector2(0, Mathf.Max(viewportRt.rect.height, lobbies.Count * rowSpacing));
 		for (int i = 0; i < lobbies.Count; i++)
 		{
 			var lobby = lobbies[i];
