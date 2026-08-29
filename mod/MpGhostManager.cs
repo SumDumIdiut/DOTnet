@@ -151,7 +151,11 @@ internal static class MpGhostManager
 		tm.text = string.IsNullOrEmpty(name) ? "?" : name;
 		tm.fontSize = 48;
 		tm.characterSize = 40f;
-		tm.anchor = TextAnchor.LowerCenter;
+		// MiddleCenter instead of LowerCenter: anchoring off the bottom placed each name
+		// at a slightly different height depending on whether it had descenders (g/y/j/
+		// p/q) or not, since the baseline is fixed but the text's own bounds aren't -
+		// centering vertically keeps every name sitting at the same spot regardless
+		tm.anchor = TextAnchor.MiddleCenter;
 		tm.alignment = TextAlignment.Center;
 		tm.color = nameColor;
 

@@ -19,6 +19,7 @@ internal class MpInGameChatHud : MonoBehaviour
 	private int _lastChatLineCount = -1;
 	private bool _chatOpen;
 	private int _openedFrame = -1;
+	private int _closedFrame = -1;
 
 	private static Key _chatKey = LoadChatKey();
 	public static bool IsRebinding { get; private set; }
@@ -215,7 +216,10 @@ internal class MpInGameChatHud : MonoBehaviour
 		}
 
 		var kb = Keyboard.current;
-		if (kb != null && !_chatOpen && kb[_chatKey].wasPressedThisFrame)
+		// same physical Enter press can both submit (closing chat via TMP_InputField's
+		// own onSubmit, which may run before or after this Update) and, read here as
+		// "just pressed", immediately reopen it on that same frame - guard against that
+		if (kb != null && !_chatOpen && kb[_chatKey].wasPressedThisFrame && Time.frameCount != _closedFrame)
 		{
 			OpenInput();
 		}
@@ -272,6 +276,7 @@ internal class MpInGameChatHud : MonoBehaviour
 	private void CloseInput()
 	{
 		_chatOpen = false;
+		_closedFrame = Time.frameCount;
 		_input.DeactivateInputField();
 		_inputRow.SetActive(false);
 		if (EventSystem.current != null && EventSystem.current.currentSelectedGameObject == _input.gameObject)
