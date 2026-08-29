@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -29,6 +30,33 @@ internal class MpInGameChatHud : MonoBehaviour
 	public static string ChatKeyName => _chatKey.ToString();
 
 	public static void BeginRebind() => IsRebinding = true;
+
+	private static readonly System.Reflection.FieldInfo MoveActionField =
+		typeof(Movement).GetField("moveAction", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+	private static readonly System.Reflection.FieldInfo JumpActionField =
+		typeof(Movement).GetField("jumpAction", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+	private static readonly System.Reflection.FieldInfo DashActionField =
+		typeof(Movement).GetField("dashAction", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+	private static readonly System.Reflection.FieldInfo ResetActionField =
+		typeof(Movement).GetField("resetAction", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+	private static void SetPlayerInputEnabled(bool enabled)
+	{
+		var player = MpNetworkManager.LocalPlayer;
+		if (player == null) return;
+		SetActionEnabled(MoveActionField, player, enabled);
+		SetActionEnabled(JumpActionField, player, enabled);
+		SetActionEnabled(DashActionField, player, enabled);
+		SetActionEnabled(ResetActionField, player, enabled);
+	}
+
+	private static void SetActionEnabled(System.Reflection.FieldInfo field, Movement player, bool enabled)
+	{
+		if (field?.GetValue(player) is InputAction action)
+		{
+			if (enabled) action.Enable(); else action.Disable();
+		}
+	}
 
 	private static Key LoadChatKey()
 	{
@@ -71,6 +99,7 @@ internal class MpInGameChatHud : MonoBehaviour
 		logRt.anchoredPosition = new Vector2(-20, -20);
 		logRt.sizeDelta = new Vector2(460, 150);
 		logGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
+		logGo.AddComponent<RectMask2D>();
 		_logGroup = logGo.GetComponent<CanvasGroup>();
 		_logGroup.alpha = 0f;
 		_logGroup.blocksRaycasts = false;
@@ -182,9 +211,7 @@ internal class MpInGameChatHud : MonoBehaviour
 
 		if (mgr.ChatLines.Count != _lastChatLineCount)
 		{
-			_lastChatLineCount = mgr.ChatLines.Count;
-			var start = Mathf.Max(0, mgr.ChatLines.Count - MaxVisibleLines);
-			_logText.text = string.Join("\n", mgr.ChatLines.GetRange(start, mgr.ChatLines.Count - start));
+			RefreshChatLog(mgr.ChatLines);
 		}
 
 		var kb = Keyboard.current;
@@ -192,12 +219,34 @@ internal class MpInGameChatHud : MonoBehaviour
 		{
 			OpenInput();
 		}
-		else if (kb != null && _chatOpen && kb.escapeKey.wasPressedThisFrame)
+		else if (kb != null && _chatOpen)
 		{
-			CloseInput();
+			bool backspaceOnEmpty = kb.backspaceKey.wasPressedThisFrame && string.IsNullOrEmpty(_input.text);
+			if (kb.escapeKey.wasPressedThisFrame || backspaceOnEmpty) CloseInput();
 		}
 
 		_logGroup.alpha = 1f;
+	}
+
+	private void RefreshChatLog(List<string> chatLines)
+	{
+		_lastChatLineCount = chatLines.Count;
+		if (chatLines.Count == 0) { _logText.text = ""; return; }
+
+		// entries can wrap to more than one rendered line, so trim by actual
+		// rendered line count rather than entry count - otherwise old lines
+		// push the newest ones out past the panel's edge
+		var joined = chatLines[chatLines.Count - 1];
+		for (int i = chatLines.Count - 2; i >= 0; i--)
+		{
+			var candidate = chatLines[i] + "\n" + joined;
+			_logText.text = candidate;
+			_logText.ForceMeshUpdate();
+			if (_logText.textInfo.lineCount > MaxVisibleLines) break;
+			joined = candidate;
+		}
+		_logText.text = joined;
+		_logText.ForceMeshUpdate();
 	}
 
 	private void OpenInput()
@@ -208,6 +257,7 @@ internal class MpInGameChatHud : MonoBehaviour
 		_input.text = "";
 		_input.ActivateInputField();
 		EventSystem.current.SetSelectedGameObject(_input.gameObject);
+		SetPlayerInputEnabled(false);
 	}
 
 	private void CloseInput()
@@ -217,6 +267,7 @@ internal class MpInGameChatHud : MonoBehaviour
 		_inputRow.SetActive(false);
 		if (EventSystem.current != null && EventSystem.current.currentSelectedGameObject == _input.gameObject)
 			EventSystem.current.SetSelectedGameObject(null);
+		SetPlayerInputEnabled(true);
 	}
 
 	private void SendAndClose()

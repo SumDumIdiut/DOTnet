@@ -16,7 +16,7 @@ const MAX_LOBBY_MEMBERS = 16;
 let nextId = 1;
 let nextLobbyId = 1;
 const clients = new Map();  // id -> { ws, name, lobbyId, ip, msgCount, msgWindowStart }
-const states = new Map();   // id -> { x, y, facingRight, animHash, animTime, lastUpdate }
+const states = new Map();   // id -> { x, y, facingRight, animState, animSpeed, lastUpdate }
 const lobbies = new Map();  // lobbyId -> { name, hostId, members: Set<id> }
 const ipCounts = new Map(); // ip -> count of open connections
 
@@ -149,8 +149,8 @@ function handleMessage(id, msg) {
         x: clampNum(msg.x, 0, -1e6, 1e6),
         y: clampNum(msg.y, 0, -1e6, 1e6),
         facingRight: !!msg.facingRight,
-        animHash: Number.isFinite(msg.animHash) ? (msg.animHash | 0) : 0,
-        animTime: clampNum(msg.animTime, 0, -1e6, 1e6),
+        animState: Number.isFinite(msg.animState) ? clampNum(msg.animState | 0, 0, 0, 63) : 0,
+        animSpeed: clampNum(msg.animSpeed, 1, -10, 10),
         lastUpdate: Date.now(),
       });
       break;

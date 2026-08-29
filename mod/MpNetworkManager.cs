@@ -39,6 +39,7 @@ internal class MpNetworkManager : MonoBehaviour
 
 	public bool IsConnected => _net.IsConnected;
 	public bool InLobby => CurrentLobbyId != 0;
+	public static Movement LocalPlayer => Instance != null ? Instance._localPlayer : null;
 
 	public static MpNetworkManager GetOrCreate()
 	{
@@ -264,23 +265,17 @@ internal class MpNetworkManager : MonoBehaviour
 	private void SendLocalState()
 	{
 		var pos = _localPlayer.transform.position;
-		int animHash = 0;
-		float animTime = 0f;
 		var anim = _localPlayer.animator;
-		if (anim != null)
-		{
-			var st = anim.GetCurrentAnimatorStateInfo(0);
-			animHash = st.fullPathHash;
-			animTime = st.normalizedTime - Mathf.Floor(st.normalizedTime);
-		}
+		int animState = anim != null ? anim.GetInteger("Animation") : 0;
+		float animSpeed = anim != null ? anim.speed : 1f;
 
 		var msg = new MpStateMsg
 		{
 			x = pos.x,
 			y = pos.y,
 			facingRight = _localPlayer.facingRight,
-			animHash = animHash,
-			animTime = animTime,
+			animState = animState,
+			animSpeed = animSpeed,
 			name = GetDisplayName(),
 			nameColor = GetNameColorHex(),
 			dotColor = GetDotColorHex(),

@@ -45,8 +45,8 @@ internal static class MpGhostManager
 			g.LastSeenTime = Time.unscaledTime;
 			if (g.Anim != null)
 			{
-				try { g.Anim.Play(p.animHash, 0, p.animTime); }
-				catch (System.Exception e) { Debug.LogWarning($"[Multiplayer] ghost Animator.Play({p.animHash}) failed: {e.Message}"); }
+				g.Anim.SetInteger("Animation", p.animState);
+				g.Anim.speed = p.animSpeed;
 			}
 		}
 

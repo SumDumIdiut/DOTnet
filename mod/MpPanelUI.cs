@@ -257,6 +257,7 @@ internal class MpPanelUI : MonoBehaviour
 		boxRt.sizeDelta = new Vector2(600, 200);
 		var boxImg = _chatBox.AddComponent<Image>();
 		ApplyRoundedBoxStyle(boxImg, Color.white);
+		_chatBox.AddComponent<RectMask2D>();
 
 		_chatLogText = CreateLabel(_chatBox.transform, "ChatLog", new Vector2(0, 0), new Vector2(560, 180), "");
 		_chatLogText.alignment = TextAlignmentOptions.TopLeft;
@@ -424,9 +425,23 @@ internal class MpPanelUI : MonoBehaviour
 		if (chatLines.Count == _lastChatLineCount) return;
 		_lastChatLineCount = chatLines.Count;
 
+		if (chatLines.Count == 0) { _chatLogText.text = ""; return; }
+
+		// entries can wrap to more than one rendered line, so trim by actual
+		// rendered line count rather than entry count - otherwise a run of long
+		// messages overflows the box instead of scrolling
 		const int maxVisibleLines = 8;
-		var start = Mathf.Max(0, chatLines.Count - maxVisibleLines);
-		_chatLogText.text = string.Join("\n", chatLines.GetRange(start, chatLines.Count - start));
+		var joined = chatLines[chatLines.Count - 1];
+		for (int i = chatLines.Count - 2; i >= 0; i--)
+		{
+			var candidate = chatLines[i] + "\n" + joined;
+			_chatLogText.text = candidate;
+			_chatLogText.ForceMeshUpdate();
+			if (_chatLogText.textInfo.lineCount > maxVisibleLines) break;
+			joined = candidate;
+		}
+		_chatLogText.text = joined;
+		_chatLogText.ForceMeshUpdate();
 	}
 
 	private void RefreshLobbyList(List<MpLobbyInfo> lobbies)

@@ -8,8 +8,8 @@ internal class MpStateMsg
 	public float x;
 	public float y;
 	public bool facingRight;
-	public int animHash;
-	public float animTime;
+	public int animState;
+	public float animSpeed;
 	public string name;
 	public string nameColor;
 	public string dotColor;
@@ -21,8 +21,8 @@ internal class MpPlayerState
 	public float x;
 	public float y;
 	public bool facingRight;
-	public int animHash;
-	public float animTime;
+	public int animState;
+	public float animSpeed;
 	public string name;
 	public string nameColor;
 	public string dotColor;
