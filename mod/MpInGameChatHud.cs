@@ -260,7 +260,11 @@ internal class MpInGameChatHud : MonoBehaviour
 			var namePart = colonIdx >= 0 ? line.Substring(0, colonIdx) : line;
 			var messagePart = colonIdx >= 0 ? line.Substring(colonIdx + 2) : "";
 
-			var rowGo = new GameObject("ChatRow", typeof(RectTransform));
+			// hand-rolled anchor math for the two columns put the message rendering
+			// way off to the right somehow (never fully pinned down) - a real
+			// HorizontalLayoutGroup computes the split itself instead, more robust
+			// than trusting my own offset arithmetic
+			var rowGo = new GameObject("ChatRow", typeof(RectTransform), typeof(HorizontalLayoutGroup));
 			rowGo.transform.SetParent(_logRowsContainer, false);
 			var rowRt = (RectTransform)rowGo.transform;
 			rowRt.anchorMin = new Vector2(0, 0);
@@ -268,15 +272,17 @@ internal class MpInGameChatHud : MonoBehaviour
 			rowRt.pivot = new Vector2(0.5f, 0f);
 			rowRt.anchoredPosition = new Vector2(0, (visible.Count - 1 - i) * LogRowHeight);
 			rowRt.sizeDelta = new Vector2(0, LogRowHeight);
+			var hlg = rowGo.GetComponent<HorizontalLayoutGroup>();
+			hlg.childAlignment = TextAnchor.MiddleLeft;
+			hlg.childControlWidth = true;
+			hlg.childControlHeight = true;
+			hlg.childForceExpandWidth = false;
+			hlg.childForceExpandHeight = true;
+			hlg.spacing = 10f;
 
-			var nameGo = new GameObject("Name", typeof(RectTransform));
+			var nameGo = new GameObject("Name", typeof(RectTransform), typeof(LayoutElement));
 			nameGo.transform.SetParent(rowGo.transform, false);
-			var nameRt = (RectTransform)nameGo.transform;
-			nameRt.anchorMin = new Vector2(0, 0);
-			nameRt.anchorMax = new Vector2(0, 1);
-			nameRt.pivot = new Vector2(0, 0.5f);
-			nameRt.anchoredPosition = Vector2.zero;
-			nameRt.sizeDelta = new Vector2(LogNameColumnWidth, 0);
+			nameGo.GetComponent<LayoutElement>().preferredWidth = LogNameColumnWidth;
 			var nameTmp = nameGo.AddComponent<TextMeshProUGUI>();
 			nameTmp.fontSize = 17;
 			nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
@@ -287,13 +293,9 @@ internal class MpInGameChatHud : MonoBehaviour
 			nameTmp.outlineColor = new Color32(0, 0, 0, 255);
 			nameTmp.text = namePart;
 
-			var msgGo = new GameObject("Message", typeof(RectTransform));
+			var msgGo = new GameObject("Message", typeof(RectTransform), typeof(LayoutElement));
 			msgGo.transform.SetParent(rowGo.transform, false);
-			var msgRt = (RectTransform)msgGo.transform;
-			msgRt.anchorMin = new Vector2(0, 0);
-			msgRt.anchorMax = new Vector2(1, 1);
-			msgRt.offsetMin = new Vector2(LogNameColumnWidth + 8, 0);
-			msgRt.offsetMax = Vector2.zero;
+			msgGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
 			var msgTmp = msgGo.AddComponent<TextMeshProUGUI>();
 			msgTmp.fontSize = 17;
 			msgTmp.alignment = TextAlignmentOptions.MidlineRight;

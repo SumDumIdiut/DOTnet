@@ -14,6 +14,8 @@ internal class MpPanelUI : MonoBehaviour
 	private GameObject _listBox;
 	private GameObject _listContent;
 	private readonly List<GameObject> _lobbyListRows = new List<GameObject>();
+	private List<MpLobbyInfo> _lastRenderedLobbies;
+	private int _lastRenderedPageIndex = -1;
 	private Button _prevPageButton;
 	private Button _nextPageButton;
 	private TMP_Text _pageLabel;
@@ -480,6 +482,18 @@ internal class MpPanelUI : MonoBehaviour
 
 	private void RefreshLobbyList(List<MpLobbyInfo> lobbies)
 	{
+		lobbies ??= new List<MpLobbyInfo>();
+		int pageCount = Mathf.Max(1, Mathf.CeilToInt(lobbies.Count / (float)LobbyPageSize));
+		_lobbyPageIndex = Mathf.Clamp(_lobbyPageIndex, 0, pageCount - 1);
+
+		// this gets called on a fixed ~0.2s timer regardless of whether the lobby
+		// list actually changed - rebuilding unconditionally destroyed and recreated
+		// every row that often, which flickered any currently-hovered row's tint off
+		// and back on repeatedly even while the mouse sat still
+		if (lobbies == _lastRenderedLobbies && _lobbyPageIndex == _lastRenderedPageIndex) return;
+		_lastRenderedLobbies = lobbies;
+		_lastRenderedPageIndex = _lobbyPageIndex;
+
 		// rows get destroyed and rebuilt below - if one of them was the selected UI
 		// object (mouse clicks set this in Unity even with navigation off) that
 		// reference goes stale and can leave a hover/selected tint stuck on whatever
@@ -488,10 +502,7 @@ internal class MpPanelUI : MonoBehaviour
 
 		foreach (var row in _lobbyListRows) Object.Destroy(row);
 		_lobbyListRows.Clear();
-		lobbies ??= new List<MpLobbyInfo>();
 
-		int pageCount = Mathf.Max(1, Mathf.CeilToInt(lobbies.Count / (float)LobbyPageSize));
-		_lobbyPageIndex = Mathf.Clamp(_lobbyPageIndex, 0, pageCount - 1);
 		bool needsPaging = lobbies.Count > LobbyPageSize;
 		_prevPageButton.gameObject.SetActive(needsPaging);
 		_nextPageButton.gameObject.SetActive(needsPaging);
