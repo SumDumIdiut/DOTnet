@@ -225,6 +225,15 @@ internal class MpInGameChatHud : MonoBehaviour
 			if (kb.escapeKey.wasPressedThisFrame || backspaceOnEmpty) CloseInput();
 		}
 
+		// a click anywhere outside the field deselects it via Unity's own EventSystem,
+		// which deactivates the field directly without going through CloseInput() -
+		// left unchecked, _chatOpen (and the movement-suppression tied to it) never
+		// clears, hardlocking input until Escape happens to fire the real close path
+		if (_chatOpen && Time.frameCount != _openedFrame && !_input.isFocused)
+		{
+			CloseInput();
+		}
+
 		_logGroup.alpha = 1f;
 	}
 

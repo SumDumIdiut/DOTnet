@@ -142,11 +142,15 @@ internal static class MpGhostManager
 
 		var labelGo = new GameObject("Label");
 		labelGo.transform.SetParent(root.transform);
-		labelGo.transform.localPosition = new Vector3(0f, 40f, 0f);
+		// this game's world units run large (camera offsets elsewhere in Movement.cs
+		// are in the hundreds) - the old characterSize/offset (1.2, 40) were sized for
+		// a typical "1 unit ~= 1 metre" convention and rendered as a barely-visible
+		// speck here instead of a readable nametag
+		labelGo.transform.localPosition = new Vector3(0f, 110f, 0f);
 		var tm = labelGo.AddComponent<TextMesh>();
 		tm.text = string.IsNullOrEmpty(name) ? "?" : name;
-		tm.fontSize = 32;
-		tm.characterSize = 1.2f;
+		tm.fontSize = 48;
+		tm.characterSize = 40f;
 		tm.anchor = TextAnchor.LowerCenter;
 		tm.alignment = TextAlignment.Center;
 		tm.color = nameColor;
