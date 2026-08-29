@@ -53,6 +53,7 @@ internal class MpLobbyInfo
 	public int id;
 	public string name;
 	public string hostName;
+	public string hostColor;
 	public int count;
 }
 

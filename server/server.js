@@ -29,7 +29,13 @@ function lobbySummary(lobbyId) {
   const l = lobbies.get(lobbyId);
   if (!l) return null;
   const hostClient = clients.get(l.hostId);
-  return { id: lobbyId, name: l.name, hostName: hostClient ? hostClient.name : '?', count: l.members.size };
+  return {
+    id: lobbyId,
+    name: l.name,
+    hostName: hostClient ? hostClient.name : '?',
+    hostColor: hostClient ? hostClient.nameColor : '#FFFFFF',
+    count: l.members.size,
+  };
 }
 
 function leaveLobby(id) {

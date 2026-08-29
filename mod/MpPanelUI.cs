@@ -463,7 +463,7 @@ internal class MpPanelUI : MonoBehaviour
 		{
 			var lobby = lobbies[i];
 			int capturedId = lobby.id;
-			var rowGo = CreateLobbyRow(_listContent.transform, new Vector2(0, y), new Vector2(560, 44), lobby.name, lobby.count);
+			var rowGo = CreateLobbyRow(_listContent.transform, new Vector2(0, y), new Vector2(560, 44), lobby.name, lobby.count, lobby.hostColor);
 			rowGo.GetComponent<Button>().onClick.AddListener(() => MpNetworkManager.GetOrCreate().JoinLobby(capturedId));
 			_lobbyListRows.Add(rowGo);
 
@@ -486,7 +486,7 @@ internal class MpPanelUI : MonoBehaviour
 		return go;
 	}
 
-	private GameObject CreateLobbyRow(Transform parent, Vector2 anchoredPos, Vector2 size, string lobbyName, int playerCount)
+	private GameObject CreateLobbyRow(Transform parent, Vector2 anchoredPos, Vector2 size, string lobbyName, int playerCount, string hostColorHex)
 	{
 		var go = Object.Instantiate(_buttonTemplate, parent);
 		go.name = "LobbyRow";
@@ -494,8 +494,14 @@ internal class MpPanelUI : MonoBehaviour
 		rt.anchoredPosition = anchoredPos;
 		rt.sizeDelta = size;
 
+		// the cloned template's own background image is a plain opaque box - not wanted
+		// here, the row should show nothing but text until it's actually hovered
+		var baseImg = go.GetComponent<Image>();
+		if (baseImg != null) baseImg.color = new Color(0f, 0f, 0f, 0f);
+
 		var font = _font;
 		var textColor = new Color(1f, 0.55f, 0.15f, 1f);
+		var nameColor = ParseHexOrDefault(hostColorHex, textColor);
 		var label = go.transform.Find("Text (TMP)");
 		if (label != null)
 		{
@@ -514,7 +520,7 @@ internal class MpPanelUI : MonoBehaviour
 		nameRt.offsetMax = new Vector2(-140f, 0f); // leaves room for the right-aligned count column
 		var nameTmp = nameGo.AddComponent<TextMeshProUGUI>();
 		nameTmp.font = font;
-		nameTmp.color = textColor;
+		nameTmp.color = nameColor;
 		nameTmp.enableAutoSizing = true;
 		nameTmp.fontSizeMax = 24f;
 		nameTmp.fontSizeMin = 12f;
@@ -548,15 +554,15 @@ internal class MpPanelUI : MonoBehaviour
 		highlightRt.offsetMin = Vector2.zero;
 		highlightRt.offsetMax = Vector2.zero;
 		var highlightImg = highlightGo.AddComponent<Image>();
-		highlightImg.color = new Color(1f, 1f, 1f, 0f);
+		highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0f);
 		highlightImg.raycastTarget = false;
 
 		var trigger = go.AddComponent<EventTrigger>();
 		var enterEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-		enterEntry.callback.AddListener(_ => highlightImg.color = new Color(1f, 1f, 1f, 0.12f));
+		enterEntry.callback.AddListener(_ => highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0.25f));
 		trigger.triggers.Add(enterEntry);
 		var exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-		exitEntry.callback.AddListener(_ => highlightImg.color = new Color(1f, 1f, 1f, 0f));
+		exitEntry.callback.AddListener(_ => highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0f));
 		trigger.triggers.Add(exitEntry);
 
 		var button = go.GetComponent<Button>();
