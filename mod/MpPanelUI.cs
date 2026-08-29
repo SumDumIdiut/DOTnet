@@ -14,6 +14,11 @@ internal class MpPanelUI : MonoBehaviour
 	private GameObject _listBox;
 	private GameObject _listContent;
 	private readonly List<GameObject> _lobbyListRows = new List<GameObject>();
+	private Button _prevPageButton;
+	private Button _nextPageButton;
+	private TMP_Text _pageLabel;
+	private int _lobbyPageIndex;
+	private const int LobbyPageSize = 2;
 
 	private GameObject _directConnectSection;
 	private TMP_InputField _hostField;
@@ -291,33 +296,28 @@ internal class MpPanelUI : MonoBehaviour
 		if (refreshLabel != null) refreshLabel.fontSize = 18f;
 		refreshGo.GetComponent<Button>().onClick.AddListener(() => MpNetworkManager.GetOrCreate().RequestLobbyList());
 
-		// more than a handful of lobbies overflowed the box outright before - a real
-		// scroll view clips to the visible area and lets the rest scroll into view
-		// instead of spilling over whatever UI sits below the box
-		var viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
-		viewportGo.transform.SetParent(_listBox.transform, false);
-		var viewportRt = (RectTransform)viewportGo.transform;
-		viewportRt.anchorMin = Vector2.zero;
-		viewportRt.anchorMax = Vector2.one;
-		viewportRt.offsetMin = new Vector2(20, 8);
-		viewportRt.offsetMax = new Vector2(-20, -28);
-
 		_listContent = new GameObject("LobbyListContent", typeof(RectTransform));
-		_listContent.transform.SetParent(viewportGo.transform, false);
-		var contentRt = (RectTransform)_listContent.transform;
-		contentRt.anchorMin = new Vector2(0, 1);
-		contentRt.anchorMax = new Vector2(1, 1);
-		contentRt.pivot = new Vector2(0.5f, 1f);
-		contentRt.anchoredPosition = Vector2.zero;
-		contentRt.sizeDelta = new Vector2(0, viewportRt.rect.height);
+		_listContent.transform.SetParent(_listBox.transform, false);
 
-		var scrollRect = _listBox.AddComponent<ScrollRect>();
-		scrollRect.content = contentRt;
-		scrollRect.viewport = viewportRt;
-		scrollRect.horizontal = false;
-		scrollRect.vertical = true;
-		scrollRect.movementType = ScrollRect.MovementType.Clamped;
-		scrollRect.scrollSensitivity = 24f;
+		// more than LobbyPageSize lobbies overflowed the box outright before (tried a
+		// RectMask2D scroll view first - for reasons never fully pinned down it clipped
+		// away every row instead of just the overflow, even though the geometry behind
+		// it measured out fine). Paging avoids the whole masking question.
+		var prevGo = CloneButton(_listBox.transform, "PrevPage", new Vector2(-230, -68), new Vector2(100, 30), "< Prev");
+		_prevPageButton = prevGo.GetComponent<Button>();
+		_prevPageButton.onClick.AddListener(() => { _lobbyPageIndex--; RefreshLobbyList(MpNetworkManager.GetOrCreate().LastLobbyList); });
+		var prevLabel = prevGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
+		if (prevLabel != null) prevLabel.fontSize = 16f;
+
+		_pageLabel = CreateLabel(_listBox.transform, "PageLabel", new Vector2(0, -68), new Vector2(160, 28), "");
+		_pageLabel.fontSize = 18;
+		_pageLabel.color = new Color(1f, 1f, 1f, 0.6f);
+
+		var nextGo = CloneButton(_listBox.transform, "NextPage", new Vector2(230, -68), new Vector2(100, 30), "Next >");
+		_nextPageButton = nextGo.GetComponent<Button>();
+		_nextPageButton.onClick.AddListener(() => { _lobbyPageIndex++; RefreshLobbyList(MpNetworkManager.GetOrCreate().LastLobbyList); });
+		var nextLabel = nextGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
+		if (nextLabel != null) nextLabel.fontSize = 16f;
 	}
 
 	private static Sprite _cachedBoxSprite;
@@ -478,23 +478,31 @@ internal class MpPanelUI : MonoBehaviour
 	{
 		foreach (var row in _lobbyListRows) Object.Destroy(row);
 		_lobbyListRows.Clear();
+		lobbies ??= new List<MpLobbyInfo>();
 
-		var viewportRt = (RectTransform)_listContent.transform.parent;
-		var contentRt = (RectTransform)_listContent.transform;
+		int pageCount = Mathf.Max(1, Mathf.CeilToInt(lobbies.Count / (float)LobbyPageSize));
+		_lobbyPageIndex = Mathf.Clamp(_lobbyPageIndex, 0, pageCount - 1);
+		bool needsPaging = lobbies.Count > LobbyPageSize;
+		_prevPageButton.gameObject.SetActive(needsPaging);
+		_nextPageButton.gameObject.SetActive(needsPaging);
+		_pageLabel.gameObject.SetActive(needsPaging);
+		_prevPageButton.interactable = _lobbyPageIndex > 0;
+		_nextPageButton.interactable = _lobbyPageIndex < pageCount - 1;
+		_pageLabel.text = $"{_lobbyPageIndex + 1}/{pageCount}";
 
-		if (lobbies == null || lobbies.Count == 0)
+		if (lobbies.Count == 0)
 		{
-			contentRt.sizeDelta = new Vector2(0, viewportRt.rect.height);
-			var emptyGo = CreateLabel(_listContent.transform, "EmptyLabel", new Vector2(0, -60), new Vector2(500, 30), "(no open lobbies yet)").gameObject;
+			var emptyGo = CreateLabel(_listContent.transform, "EmptyLabel", new Vector2(0, 4), new Vector2(500, 30), "(no open lobbies yet)").gameObject;
 			emptyGo.GetComponent<TMP_Text>().color = new Color(1f, 1f, 1f, 0.5f);
 			_lobbyListRows.Add(emptyGo);
 			return;
 		}
 
-		float y = 0f;
+		var start = _lobbyPageIndex * LobbyPageSize;
+		var end = Mathf.Min(start + LobbyPageSize, lobbies.Count);
+		float y = 28f;
 		const float rowSpacing = 48f;
-		contentRt.sizeDelta = new Vector2(0, Mathf.Max(viewportRt.rect.height, lobbies.Count * rowSpacing));
-		for (int i = 0; i < lobbies.Count; i++)
+		for (int i = start; i < end; i++)
 		{
 			var lobby = lobbies[i];
 			int capturedId = lobby.id;
@@ -502,7 +510,7 @@ internal class MpPanelUI : MonoBehaviour
 			rowGo.GetComponent<Button>().onClick.AddListener(() => MpNetworkManager.GetOrCreate().JoinLobby(capturedId));
 			_lobbyListRows.Add(rowGo);
 
-			if (i < lobbies.Count - 1)
+			if (i < end - 1)
 				_lobbyListRows.Add(CreateDivider(_listContent.transform, new Vector2(0, y - rowSpacing / 2f)));
 
 			y -= rowSpacing;
