@@ -1,5 +1,5 @@
 #define MyAppName "DOTnet"
-#define MyAppVersion "2.5.1"
+#define MyAppVersion "2.5.2"
 #define ExeName "IGTAPsnfDemo.exe"
 #define DemoDir "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That''s Also a Platformer Demo"
 
@@ -99,7 +99,8 @@ var
   ResultCode: Integer;
   StatusFilePath, Params: string;
   Content: AnsiString;
-  Iterations: Integer;
+  RealContent: string;
+  DonePos, Iterations: Integer;
 begin
   StatusFilePath := ExpandConstant('{tmp}\dotnet_mod_status.txt');
   DeleteFile(StatusFilePath);
@@ -126,11 +127,21 @@ begin
       Iterations := Iterations + 1;
       if LoadStringFromFile(StatusFilePath, Content) then
       begin
-        if Pos('STATUS_DONE', Content) > 0 then Break;
-        if Content <> LastBuildStatus then
+        // the script can finish (and append STATUS_DONE) between one poll and the
+        // next, so this same read can contain both the real last status and the
+        // marker together - pull the text out before it instead of discarding it
+        DonePos := Pos('STATUS_DONE', string(Content));
+        if DonePos > 0 then
         begin
-          ProgressPage.SetText(Content, '');
-          LastBuildStatus := Content;
+          RealContent := Copy(string(Content), 1, DonePos - 1);
+          if (RealContent <> '') and (RealContent <> LastBuildStatus) then
+            LastBuildStatus := RealContent;
+          Break;
+        end;
+        if string(Content) <> LastBuildStatus then
+        begin
+          ProgressPage.SetText(string(Content), '');
+          LastBuildStatus := string(Content);
         end;
       end;
       // ~10 minute safety net in case something hangs with no status update at all
