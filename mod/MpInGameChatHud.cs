@@ -237,7 +237,9 @@ internal class MpInGameChatHud : MonoBehaviour
 	}
 
 	private const float LogRowHeight = 22f;
+	private const int LogMaxMessageLines = 2;
 	private const float LogNameColumnWidth = 140f;
+	private const float LogColumnSpacing = 10f;
 
 	private void RefreshChatLog(List<string> chatLines)
 	{
@@ -248,12 +250,16 @@ internal class MpInGameChatHud : MonoBehaviour
 
 		var start = Mathf.Max(0, chatLines.Count - MaxVisibleLines);
 		var visible = chatLines.GetRange(start, chatLines.Count - start);
+		var containerWidth = ((RectTransform)_logRowsContainer).rect.width;
+		var messageColumnWidth = Mathf.Max(0, containerWidth - LogNameColumnWidth - LogColumnSpacing);
 
 		// newest at the bottom, older ones stacked upward, each split into a
 		// left-aligned name column and a right-aligned message column instead of
-		// one "Name: message" blob - a long message no longer pushes the name
-		// (or itself) around depending on how the whole line happens to wrap
-		for (int i = 0; i < visible.Count; i++)
+		// one "Name: message" blob. Rows are built bottom-up here so a message
+		// that wraps to a second line can push everything above it up by its
+		// own real height instead of every row assuming a fixed single-line size
+		float y = 2f;
+		for (int i = visible.Count - 1; i >= 0; i--)
 		{
 			var line = visible[i];
 			var colonIdx = line.IndexOf(": ", StringComparison.Ordinal);
@@ -270,22 +276,20 @@ internal class MpInGameChatHud : MonoBehaviour
 			rowRt.anchorMin = new Vector2(0, 0);
 			rowRt.anchorMax = new Vector2(1, 0);
 			rowRt.pivot = new Vector2(0.5f, 0f);
-			rowRt.anchoredPosition = new Vector2(0, (visible.Count - 1 - i) * LogRowHeight);
-			rowRt.sizeDelta = new Vector2(0, LogRowHeight);
 			var hlg = rowGo.GetComponent<HorizontalLayoutGroup>();
-			hlg.childAlignment = TextAnchor.MiddleLeft;
+			hlg.childAlignment = TextAnchor.UpperLeft;
 			hlg.childControlWidth = true;
 			hlg.childControlHeight = true;
 			hlg.childForceExpandWidth = false;
 			hlg.childForceExpandHeight = true;
-			hlg.spacing = 10f;
+			hlg.spacing = LogColumnSpacing;
 
 			var nameGo = new GameObject("Name", typeof(RectTransform), typeof(LayoutElement));
 			nameGo.transform.SetParent(rowGo.transform, false);
 			nameGo.GetComponent<LayoutElement>().preferredWidth = LogNameColumnWidth;
 			var nameTmp = nameGo.AddComponent<TextMeshProUGUI>();
 			nameTmp.fontSize = 17;
-			nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
+			nameTmp.alignment = TextAlignmentOptions.TopLeft;
 			nameTmp.enableWordWrapping = false;
 			nameTmp.overflowMode = TextOverflowModes.Ellipsis;
 			nameTmp.color = Color.white;
@@ -298,13 +302,23 @@ internal class MpInGameChatHud : MonoBehaviour
 			msgGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
 			var msgTmp = msgGo.AddComponent<TextMeshProUGUI>();
 			msgTmp.fontSize = 17;
-			msgTmp.alignment = TextAlignmentOptions.MidlineRight;
-			msgTmp.enableWordWrapping = false;
+			msgTmp.alignment = TextAlignmentOptions.TopRight;
+			msgTmp.enableWordWrapping = true;
 			msgTmp.overflowMode = TextOverflowModes.Ellipsis;
+			msgTmp.maxVisibleLines = LogMaxMessageLines;
 			msgTmp.color = Color.white;
 			msgTmp.outlineWidth = 0.18f;
 			msgTmp.outlineColor = new Color32(0, 0, 0, 255);
 			msgTmp.text = messagePart;
+
+			// how tall this specific row needs to be, now that its message might
+			// wrap to a second line instead of every row being one fixed height
+			var neededHeight = msgTmp.GetPreferredValues(messagePart, messageColumnWidth, 0f).y;
+			var rowHeight = Mathf.Clamp(neededHeight, LogRowHeight, LogRowHeight * LogMaxMessageLines);
+
+			rowRt.anchoredPosition = new Vector2(0, y);
+			rowRt.sizeDelta = new Vector2(0, rowHeight);
+			y += rowHeight;
 
 			_logRows.Add(rowGo);
 		}

@@ -2,7 +2,10 @@
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 7777;
-const BROADCAST_HZ = 15;
+// was 15 - visibly choppy for anyone watching another player, since a client
+// sending state every 2 frames (~30Hz) was being throttled down to 15Hz on
+// the way back out to everyone else
+const BROADCAST_HZ = 30;
 const STALE_MS = 8000; // drop a player's last-known state if nothing arrives for this long
 
 const MAX_CONNECTIONS = 500;
@@ -12,12 +15,13 @@ const MAX_MSGS_PER_SEC = 120; // real gameplay sends every 2 frames; this is gen
 const HEARTBEAT_MS = 15 * 1000;
 const MAX_LOBBIES = 500;
 const MAX_LOBBY_MEMBERS = 16;
+const MAX_CHAT_HISTORY = 50; // per lobby, so someone joining mid-conversation isn't lost
 
 let nextId = 1;
 let nextLobbyId = 1;
 const clients = new Map();  // id -> { ws, name, lobbyId, ip, msgCount, msgWindowStart }
-const states = new Map();   // id -> { x, y, facingRight, animState, animSpeed, lastUpdate }
-const lobbies = new Map();  // lobbyId -> { name, hostId, members: Set<id> }
+const states = new Map();   // id -> { x, y, facingRight, animState, animSpeed, isPaused, lastUpdate }
+const lobbies = new Map();  // lobbyId -> { name, hostId, members: Set<id>, chatHistory: [] }
 const ipCounts = new Map(); // ip -> count of open connections
 
 function send(ws, obj) {
@@ -164,6 +168,7 @@ function handleMessage(id, msg) {
         facingRight: !!msg.facingRight,
         animState: Number.isFinite(msg.animState) ? clampNum(msg.animState | 0, 0, 0, 63) : 0,
         animSpeed: clampNum(msg.animSpeed, 1, -10, 10),
+        isPaused: !!msg.isPaused,
         lastUpdate: Date.now(),
       });
       break;
@@ -178,7 +183,7 @@ function handleMessage(id, msg) {
       leaveLobby(id);
       const lobbyId = nextLobbyId++;
       const name = (typeof msg.name === 'string' && msg.name.trim().length > 0) ? sanitizeName(msg.name, 32) : (c.name + "'s lobby");
-      lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]) });
+      lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]), chatHistory: [] });
       c.lobbyId = lobbyId;
       send(c.ws, { type: 'hosted', lobbyId, name });
       console.log(`[lobby] ${id} hosted "${name}" (#${lobbyId})`);
@@ -204,7 +209,7 @@ function handleMessage(id, msg) {
       leaveLobby(id);
       l.members.add(id);
       c.lobbyId = lobbyId;
-      send(c.ws, { type: 'joined', lobbyId, name: l.name });
+      send(c.ws, { type: 'joined', lobbyId, name: l.name, history: l.chatHistory });
       console.log(`[lobby] ${id} joined "${l.name}" (#${lobbyId})`);
       break;
     }
@@ -219,9 +224,12 @@ function handleMessage(id, msg) {
       if (!l) break;
       const text = typeof msg.text === 'string' ? msg.text.slice(0, 240).trim() : '';
       if (!text) break;
+      const entry = { from: c.name, fromColor: c.nameColor, text };
+      l.chatHistory.push(entry);
+      if (l.chatHistory.length > MAX_CHAT_HISTORY) l.chatHistory.shift();
       for (const memberId of l.members) {
         const mc = clients.get(memberId);
-        if (mc) send(mc.ws, { type: 'chat', from: c.name, fromColor: c.nameColor, text });
+        if (mc) send(mc.ws, { type: 'chat', ...entry });
       }
       console.log(`[chat] #${c.lobbyId} ${c.name}: ${text}`);
       break;

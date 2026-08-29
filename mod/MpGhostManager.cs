@@ -12,6 +12,7 @@ internal static class MpGhostManager
 		public float LastSeenTime;
 		public Animator Anim;
 		public TextMesh Label;
+		public GameObject PausedIndicator;
 	}
 
 	private static readonly Dictionary<int, GhostEntry> _ghosts = new Dictionary<int, GhostEntry>();
@@ -48,6 +49,7 @@ internal static class MpGhostManager
 				g.Anim.SetInteger("Animation", p.animState);
 				g.Anim.speed = p.animSpeed;
 			}
+			if (g.PausedIndicator != null) g.PausedIndicator.SetActive(p.isPaused);
 		}
 
 		var stale = new List<int>();
@@ -161,12 +163,25 @@ internal static class MpGhostManager
 		tm.alignment = TextAlignment.Center;
 		tm.color = nameColor;
 
+		var pausedGo = new GameObject("PausedIndicator");
+		pausedGo.transform.SetParent(root.transform);
+		pausedGo.transform.localPosition = new Vector3(0f, 105f, 0f); // above the name label
+		var pausedTm = pausedGo.AddComponent<TextMesh>();
+		pausedTm.text = "PAUSED";
+		pausedTm.fontSize = 48;
+		pausedTm.characterSize = 6f;
+		pausedTm.anchor = TextAnchor.MiddleCenter;
+		pausedTm.alignment = TextAlignment.Center;
+		pausedTm.color = new Color(1f, 0.85f, 0.2f);
+		pausedGo.SetActive(false); // only shown while a snapshot reports this player as paused
+
 		return new GhostEntry
 		{
 			Root = root,
 			SpriteTransform = spriteTransform,
 			Label = tm,
 			Anim = anim,
+			PausedIndicator = pausedGo,
 			TargetPos = spawnPos,
 			LastSeenTime = Time.unscaledTime,
 		};

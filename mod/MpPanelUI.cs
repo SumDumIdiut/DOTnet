@@ -30,6 +30,7 @@ internal class MpPanelUI : MonoBehaviour
 
 	private GameObject _inLobbyRow;
 	private TMP_Text _inLobbyLabel;
+	private TMP_Text _playersLabel;
 	private GameObject _chatBox;
 	private TMP_Text _chatLogText;
 	private TMP_InputField _chatInputField;
@@ -80,6 +81,11 @@ internal class MpPanelUI : MonoBehaviour
 		_inLobbyRow = new GameObject("InLobbyRow", typeof(RectTransform));
 		_inLobbyRow.transform.SetParent(root, false);
 		_inLobbyLabel = CreateLabel(_inLobbyRow.transform, "InLobbyLabel", new Vector2(0, 160), new Vector2(560, 34), "");
+		_playersLabel = CreateLabel(_inLobbyRow.transform, "PlayersLabel", new Vector2(0, 133), new Vector2(560, 24), "");
+		_playersLabel.fontSize = 16;
+		_playersLabel.enableWordWrapping = false;
+		_playersLabel.overflowMode = TextOverflowModes.Ellipsis;
+		_playersLabel.color = new Color(1f, 1f, 1f, 0.75f);
 		BuildChatSection(_inLobbyRow.transform);
 		var leaveGo = CloneButton(_inLobbyRow.transform, "Leave Lobby", new Vector2(0, -160), new Vector2(280, 60));
 		leaveGo.GetComponent<Button>().onClick.AddListener(OnLeaveClicked);
@@ -450,10 +456,26 @@ internal class MpPanelUI : MonoBehaviour
 		if (inLobby)
 		{
 			_inLobbyLabel.text = "In lobby: " + mgr.CurrentLobbyName;
+			RefreshPlayersLabel(mgr.LastSnapshotPlayers);
 			RefreshChatLog(mgr.ChatLines);
 		}
 
 		if (connected && !inLobby) RefreshLobbyList(mgr.LastLobbyList);
+	}
+
+	private void RefreshPlayersLabel(List<MpPlayerState> others)
+	{
+		var selfHex = MpNetworkManager.GetNameColorHex();
+		var selfName = MpNetworkManager.SanitizeForRichText(MpNetworkManager.GetDisplayName());
+		var sb = new System.Text.StringBuilder("Players: <color=").Append(selfHex).Append('>').Append(selfName).Append("</color>");
+		foreach (var p in others)
+		{
+			var hexRe = !string.IsNullOrEmpty(p.nameColor) && p.nameColor.Length == 7 && p.nameColor[0] == '#' ? p.nameColor : "#FFFFFF";
+			var safeName = MpNetworkManager.SanitizeForRichText(p.name);
+			sb.Append(", <color=").Append(hexRe).Append('>').Append(safeName).Append("</color>");
+			if (p.isPaused) sb.Append(" (paused)");
+		}
+		_playersLabel.text = sb.ToString();
 	}
 
 	private void RefreshChatLog(List<string> chatLines)

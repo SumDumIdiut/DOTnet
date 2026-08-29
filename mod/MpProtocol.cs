@@ -10,6 +10,7 @@ internal class MpStateMsg
 	public bool facingRight;
 	public int animState;
 	public float animSpeed;
+	public bool isPaused;
 	public string name;
 	public string nameColor;
 	public string dotColor;
@@ -23,6 +24,7 @@ internal class MpPlayerState
 	public bool facingRight;
 	public int animState;
 	public float animSpeed;
+	public bool isPaused;
 	public string name;
 	public string nameColor;
 	public string dotColor;
@@ -66,5 +68,12 @@ internal class MpLobbyListMsg
 internal class MpChatMsg
 {
 	public string type = "chat";
+	public string text;
+}
+
+internal class MpChatHistoryEntry
+{
+	public string from;
+	public string fromColor;
 	public string text;
 }

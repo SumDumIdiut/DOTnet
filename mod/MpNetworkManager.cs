@@ -16,6 +16,7 @@ internal class MpNetworkManager : MonoBehaviour
 	public int CurrentLobbyId;
 	public string CurrentLobbyName;
 	public List<MpLobbyInfo> LastLobbyList = new List<MpLobbyInfo>();
+	public List<MpPlayerState> LastSnapshotPlayers = new List<MpPlayerState>();
 	public readonly List<string> ChatLines = new List<string>();
 	private const int MaxChatLines = 50;
 
@@ -196,7 +197,7 @@ internal class MpNetworkManager : MonoBehaviour
 	}
 
 	// SteamManager owns SteamAPI Init/Shutdown/RunCallbacks; this only reads from it
-	private static string GetDisplayName()
+	internal static string GetDisplayName()
 	{
 		try
 		{
@@ -268,6 +269,8 @@ internal class MpNetworkManager : MonoBehaviour
 		var anim = _localPlayer.animator;
 		int animState = anim != null ? anim.GetInteger("Animation") : 0;
 		float animSpeed = anim != null ? anim.speed : 1f;
+		bool isPaused = (LatestMainBit != null && LatestMainBit.activeInHierarchy)
+			|| (LatestMpPanel != null && LatestMpPanel.activeInHierarchy);
 
 		var msg = new MpStateMsg
 		{
@@ -276,6 +279,7 @@ internal class MpNetworkManager : MonoBehaviour
 			facingRight = _localPlayer.facingRight,
 			animState = animState,
 			animSpeed = animSpeed,
+			isPaused = isPaused,
 			name = GetDisplayName(),
 			nameColor = GetNameColorHex(),
 			dotColor = GetDotColorHex(),
@@ -298,7 +302,8 @@ internal class MpNetworkManager : MonoBehaviour
 			case "snapshot":
 			{
 				var snap = obj.ToObject<MpSnapshotMsg>();
-				MpGhostManager.ApplySnapshot(snap?.players ?? new List<MpPlayerState>());
+				LastSnapshotPlayers = snap?.players ?? new List<MpPlayerState>();
+				MpGhostManager.ApplySnapshot(LastSnapshotPlayers);
 				break;
 			}
 			case "hosted":
@@ -308,11 +313,19 @@ internal class MpNetworkManager : MonoBehaviour
 				ChatLines.Clear();
 				break;
 			case "joined":
+			{
 				CurrentLobbyId = (int)obj["lobbyId"];
 				CurrentLobbyName = SanitizeForRichText((string)obj["name"]);
 				StatusText = "Connected";
 				ChatLines.Clear();
+				// backfill whatever the lobby's members already said before this
+				// client joined, instead of starting mid-conversation with nothing
+				var history = obj["history"]?.ToObject<List<MpChatHistoryEntry>>();
+				if (history != null)
+					foreach (var h in history)
+						ChatLines.Add(FormatChatLine(h.from, h.fromColor, h.text));
 				break;
+			}
 			case "join_failed":
 				StatusText = "Join failed: " + (string)obj["reason"];
 				break;
@@ -320,6 +333,7 @@ internal class MpNetworkManager : MonoBehaviour
 				CurrentLobbyId = 0;
 				CurrentLobbyName = null;
 				MpGhostManager.Clear();
+				LastSnapshotPlayers.Clear();
 				StatusText = "Connected";
 				break;
 			case "lobby_list":
@@ -330,17 +344,19 @@ internal class MpNetworkManager : MonoBehaviour
 				break;
 			}
 			case "chat":
-			{
-				var from = SanitizeForRichText((string)obj["from"] ?? "?");
-				var text = SanitizeForRichText((string)obj["text"] ?? "");
-				var fromColor = (string)obj["fromColor"];
-				var isValidHex = !string.IsNullOrEmpty(fromColor) && fromColor.Length == 7 && fromColor[0] == '#';
-				var namePart = isValidHex ? $"<color={fromColor}>{from}</color>" : from;
-				ChatLines.Add($"{namePart}: {text}");
+				ChatLines.Add(FormatChatLine((string)obj["from"], (string)obj["fromColor"], (string)obj["text"]));
 				while (ChatLines.Count > MaxChatLines) ChatLines.RemoveAt(0);
 				break;
-			}
 		}
+	}
+
+	private static string FormatChatLine(string from, string fromColor, string text)
+	{
+		var safeFrom = SanitizeForRichText(from ?? "?");
+		var safeText = SanitizeForRichText(text ?? "");
+		var isValidHex = !string.IsNullOrEmpty(fromColor) && fromColor.Length == 7 && fromColor[0] == '#';
+		var namePart = isValidHex ? $"<color={fromColor}>{safeFrom}</color>" : safeFrom;
+		return $"{namePart}: {safeText}";
 	}
 
 	// Chat text, lobby names, and display names are all player-controlled and
@@ -348,7 +364,7 @@ internal class MpNetworkManager : MonoBehaviour
 	// angle brackets (rather than wrapping in <noparse>) means the string can
 	// never form a tag at all, even via a smuggled "</noparse>" trying to
 	// break back out early.
-	private static string SanitizeForRichText(string s)
+	internal static string SanitizeForRichText(string s)
 		=> string.IsNullOrEmpty(s) ? (s ?? "") : s.Replace('<', '＜').Replace('>', '＞');
 
 	private void CheckTestFlag()
@@ -449,6 +465,7 @@ internal class MpNetworkManager : MonoBehaviour
 	{
 		_net.Disconnect();
 		MpGhostManager.Clear();
+		LastSnapshotPlayers.Clear();
 		CurrentLobbyId = 0;
 		CurrentLobbyName = null;
 		StatusText = "Not connected";
@@ -475,6 +492,7 @@ internal class MpNetworkManager : MonoBehaviour
 		CurrentLobbyId = 0;
 		CurrentLobbyName = null;
 		MpGhostManager.Clear();
+		LastSnapshotPlayers.Clear();
 		StatusText = "Connected";
 	}
 
