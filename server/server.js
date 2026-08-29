@@ -127,6 +127,13 @@ wss.on('connection', (ws, req) => {
   ws.on('error', cleanup);
 });
 
+// strips control/newline characters from player-supplied names before they're
+// stored - otherwise they end up verbatim in console.log lines (log injection)
+// and can wrap the lobby list/chat UI oddly on the client
+function sanitizeName(s, maxLen) {
+  return s.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLen);
+}
+
 function clampNum(v, fallback, min, max) {
   if (!Number.isFinite(v)) return fallback;
   if (v < min) return min;
@@ -140,7 +147,7 @@ function handleMessage(id, msg) {
 
   switch (msg.type) {
     case 'state': {
-      if (typeof msg.name === 'string' && msg.name.length > 0) c.name = msg.name.slice(0, 24);
+      if (typeof msg.name === 'string' && msg.name.length > 0) c.name = sanitizeName(msg.name, 24);
       // per-client, not per-frame, so a snapshot still includes it even without a fresh state line this tick
       const hexRe = /^#[0-9a-fA-F]{6}$/;
       if (hexRe.test(msg.nameColor)) c.nameColor = msg.nameColor;
@@ -161,10 +168,10 @@ function handleMessage(id, msg) {
         break;
       }
       // applied before any c.name read, including the default lobby-name fallback
-      if (typeof msg.playerName === 'string' && msg.playerName.trim().length > 0) c.name = msg.playerName.slice(0, 24);
+      if (typeof msg.playerName === 'string' && msg.playerName.trim().length > 0) c.name = sanitizeName(msg.playerName, 24);
       leaveLobby(id);
       const lobbyId = nextLobbyId++;
-      const name = (typeof msg.name === 'string' && msg.name.trim().length > 0) ? msg.name.slice(0, 32) : (c.name + "'s lobby");
+      const name = (typeof msg.name === 'string' && msg.name.trim().length > 0) ? sanitizeName(msg.name, 32) : (c.name + "'s lobby");
       lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]) });
       c.lobbyId = lobbyId;
       send(c.ws, { type: 'hosted', lobbyId, name });
@@ -177,7 +184,7 @@ function handleMessage(id, msg) {
       break;
     }
     case 'join_lobby': {
-      if (typeof msg.playerName === 'string' && msg.playerName.trim().length > 0) c.name = msg.playerName.slice(0, 24);
+      if (typeof msg.playerName === 'string' && msg.playerName.trim().length > 0) c.name = sanitizeName(msg.playerName, 24);
       const lobbyId = msg.lobbyId | 0;
       const l = lobbies.get(lobbyId);
       if (!l) {

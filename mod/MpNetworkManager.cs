@@ -303,13 +303,13 @@ internal class MpNetworkManager : MonoBehaviour
 			}
 			case "hosted":
 				CurrentLobbyId = (int)obj["lobbyId"];
-				CurrentLobbyName = (string)obj["name"];
+				CurrentLobbyName = SanitizeForRichText((string)obj["name"]);
 				StatusText = "Connected"; // MpPanelUI's dedicated in-lobby row already names the lobby
 				ChatLines.Clear();
 				break;
 			case "joined":
 				CurrentLobbyId = (int)obj["lobbyId"];
-				CurrentLobbyName = (string)obj["name"];
+				CurrentLobbyName = SanitizeForRichText((string)obj["name"]);
 				StatusText = "Connected";
 				ChatLines.Clear();
 				break;
@@ -326,12 +326,13 @@ internal class MpNetworkManager : MonoBehaviour
 			{
 				var msg = obj.ToObject<MpLobbyListMsg>();
 				LastLobbyList = msg?.lobbies ?? new List<MpLobbyInfo>();
+				foreach (var l in LastLobbyList) l.name = SanitizeForRichText(l.name);
 				break;
 			}
 			case "chat":
 			{
-				var from = (string)obj["from"] ?? "?";
-				var text = (string)obj["text"] ?? "";
+				var from = SanitizeForRichText((string)obj["from"] ?? "?");
+				var text = SanitizeForRichText((string)obj["text"] ?? "");
 				var fromColor = (string)obj["fromColor"];
 				var isValidHex = !string.IsNullOrEmpty(fromColor) && fromColor.Length == 7 && fromColor[0] == '#';
 				var namePart = isValidHex ? $"<color={fromColor}>{from}</color>" : from;
@@ -341,6 +342,14 @@ internal class MpNetworkManager : MonoBehaviour
 			}
 		}
 	}
+
+	// Chat text, lobby names, and display names are all player-controlled and
+	// end up in TMP_Text components with rich text parsing on - replacing the
+	// angle brackets (rather than wrapping in <noparse>) means the string can
+	// never form a tag at all, even via a smuggled "</noparse>" trying to
+	// break back out early.
+	private static string SanitizeForRichText(string s)
+		=> string.IsNullOrEmpty(s) ? (s ?? "") : s.Replace('<', '＜').Replace('>', '＞');
 
 	private void CheckTestFlag()
 	{
@@ -413,13 +422,25 @@ internal class MpNetworkManager : MonoBehaviour
 		}
 	}
 
+	private volatile bool _connecting;
+
 	public void ConnectAsync(string host, int port)
 	{
+		// MpNetClient.Connect() isn't safe to call concurrently (it mutates a
+		// shared _ws field with no locking) - a stray double-click on Connect
+		// while a slow attempt is still in flight would otherwise race two
+		// threads through it at once.
+		if (_connecting) return;
+		_connecting = true;
 		StatusText = "Connecting...";
 		new Thread(() =>
 		{
-			_net.Connect(host, port);
-			if (!_net.IsConnected) StatusText = "Failed: " + (_net.LastError ?? "unknown error");
+			try
+			{
+				_net.Connect(host, port);
+				if (!_net.IsConnected) StatusText = "Failed: " + (_net.LastError ?? "unknown error");
+			}
+			finally { _connecting = false; }
 		})
 		{ IsBackground = true }.Start();
 	}

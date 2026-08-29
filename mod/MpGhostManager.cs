@@ -120,6 +120,10 @@ internal static class MpGhostManager
 			}
 			sr = spriteGo.GetComponent<SpriteRenderer>();
 			anim = spriteGo.GetComponent<Animator>();
+			// ghost position already interpolates on unscaled time (Tick() below), so its
+			// animator needs to match or it visibly freezes while the local player's own
+			// pause menu sets Time.timeScale to 0
+			if (anim != null) anim.updateMode = AnimatorUpdateMode.UnscaledTime;
 			spriteTransform = spriteGo.transform;
 		}
 		else
