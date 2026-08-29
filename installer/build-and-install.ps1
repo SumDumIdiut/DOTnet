@@ -1,41 +1,40 @@
 <#
 .SYNOPSIS
     Decompiles, patches, builds, and installs the multiplayer mod against
-    whatever copy of the game is actually present on this machine. Never
-    ships any of the game's own code - it only ever reads/writes files
-    that are already on this PC.
+    the IGTAP Demo installed on this machine. Never ships any of the
+    game's own code - it only ever reads/writes files that are already
+    on this PC.
 
-.PARAMETER Target
-    Playtest, Demo, or Both (default).
+.PARAMETER NoSdkDownload
+    Don't auto-download a portable .NET SDK if none is found - just fail.
+    Set by the installer when the user declined the download prompt.
+
+.PARAMETER StatusFile
+    Path to a text file this script keeps updated with its current phase,
+    for the installer's GUI to poll and display. Writes "STATUS_DONE" as
+    its last line when finished (success or failure).
 #>
 param(
-    [ValidateSet('Playtest', 'Demo', 'Both')]
-    [string]$Target = 'Both'
+    [switch]$NoSdkDownload,
+    [string]$StatusFile
 )
 
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $ilspycmd = Join-Path $root 'tools\ilspycmd\ilspycmd.dll'
 
-$allTargets = @(
-    @{
-        Name    = 'Playtest'
-        GameDir = "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That's Also a Platformer Playtest"
-        AwakeAnchor = "`t`t`t`tstartButtonText.StringReference = startButtonNewGame;`r`n`t`t`t}`r`n`t`t}"
-    },
-    @{
-        Name    = 'Demo'
-        GameDir = "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That's Also a Platformer Demo"
-        AwakeAnchor = "`t`t`tdeleteSaveButton.text = deleteSaveMessages[0].GetLocalizedString();`r`n`t`t}"
-    }
-)
-$targets = if ($Target -eq 'Both') { $allTargets } else { $allTargets | Where-Object { $_.Name -eq $Target } }
+function Set-Status([string]$text) {
+    Write-Host $text
+    if ($StatusFile) { Set-Content -Path $StatusFile -Value $text -Force }
+}
+
+$gameDir = "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That's Also a Platformer Demo"
+$awakeAnchor = "`t`t`tdeleteSaveButton.text = deleteSaveMessages[0].GetLocalizedString();`r`n`t`t}"
 
 function Get-DotnetExe {
     $sdks = & dotnet --list-sdks 2>$null
     if ($LASTEXITCODE -eq 0 -and $sdks) { return 'dotnet' }
 
-    # most players won't have a system SDK - fetch a portable one instead of just erroring out
     $localSdkDir = Join-Path $root '.dotnet-sdk'
     $localDotnetExe = Join-Path $localSdkDir 'dotnet.exe'
     if (Test-Path $localDotnetExe) {
@@ -43,13 +42,17 @@ function Get-DotnetExe {
         if ($LASTEXITCODE -eq 0 -and $sdks) { return $localDotnetExe }
     }
 
-    Write-Host "No .NET SDK found - downloading a portable copy (one-time, roughly 200 MB)..." -ForegroundColor Yellow
+    if ($NoSdkDownload) {
+        throw "No .NET SDK available and automatic download was declined."
+    }
+
+    Set-Status "Downloading the .NET SDK (one-time, roughly 200 MB)..."
     New-Item -ItemType Directory -Force -Path $localSdkDir | Out-Null
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     try {
         $installScript = Join-Path $env:TEMP 'dotnet-install.ps1'
         Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript -UseBasicParsing
-        & $installScript -Channel LTS -InstallDir $localSdkDir -NoPath
+        & $installScript -Channel LTS -InstallDir $localSdkDir -NoPath *> (Join-Path $env:TEMP 'dotnet-sdk-install.log')
     }
     catch {
         Write-Warning "Portable .NET SDK download failed: $($_.Exception.Message)"
@@ -57,33 +60,28 @@ function Get-DotnetExe {
 
     if (Test-Path $localDotnetExe) {
         $sdks = & $localDotnetExe --list-sdks 2>$null
-        if ($LASTEXITCODE -eq 0 -and $sdks) {
-            Write-Host "Portable .NET SDK ready." -ForegroundColor Green
-            return $localDotnetExe
-        }
+        if ($LASTEXITCODE -eq 0 -and $sdks) { return $localDotnetExe }
     }
-    throw "Could not obtain a .NET SDK (none installed, and the automatic portable download failed - check your internet connection). Install the .NET SDK from https://dotnet.microsoft.com/download and run this installer again."
+    throw "Could not obtain a .NET SDK (none installed, and the automatic portable download failed - check your internet connection)."
 }
 
-$dotnetExe = Get-DotnetExe
-$hookInsert = "`t`ttry { MpMenuBuilder.Install(this); }`r`n`t`tcatch (System.Exception e) { Debug.LogError(`"[Multiplayer] menu install failed: `" + e); }"
-$propsInsert = "`tpublic GameObject mainBitPublic => mainBit;`r`n`tpublic GameObject settingsBitPublic => settingsBit;`r`n`r`n"
-
-foreach ($t in $targets) {
-    Write-Host "`n=== $($t.Name) ===" -ForegroundColor Cyan
-
-    if (-not (Test-Path $t.GameDir)) {
-        Write-Host "$($t.Name): not installed here, skipping." -ForegroundColor DarkGray
-        continue
+try {
+    if (-not (Test-Path $gameDir)) {
+        Set-Status "IGTAP Demo isn't installed here - nothing to do."
+        return
     }
 
     $proc = Get-CimInstance Win32_Process -Filter "Name='IGTAPsnfDemo.exe'" -ErrorAction SilentlyContinue
     if ($proc) {
-        Write-Warning "$($t.Name): the game is running. Close it and run this installer again - skipping."
-        continue
+        Set-Status "The game is running - close it and run this installer again."
+        return
     }
 
-    $managed = Join-Path $t.GameDir 'IGTAPsnfDemo_Data\Managed'
+    $dotnetExe = Get-DotnetExe
+    $hookInsert = "`t`ttry { MpMenuBuilder.Install(this); }`r`n`t`tcatch (System.Exception e) { Debug.LogError(`"[Multiplayer] menu install failed: `" + e); }"
+    $propsInsert = "`tpublic GameObject mainBitPublic => mainBit;`r`n`tpublic GameObject settingsBitPublic => settingsBit;`r`n`r`n"
+
+    $managed = Join-Path $gameDir 'IGTAPsnfDemo_Data\Managed'
     $deployed = Join-Path $managed 'Assembly-CSharp.dll'
     $backup = Join-Path $managed 'Assembly-CSharp.ORIGINAL.dll'
 
@@ -92,24 +90,24 @@ foreach ($t in $targets) {
     }
     $sourceDll = $backup
 
-    $work = Join-Path $env:TEMP "igtap-mp-build-$($t.Name)"
+    $work = Join-Path $env:TEMP 'igtap-mp-build-Demo'
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $work | Out-Null
 
-    Write-Host "$($t.Name): decompiling..."
+    Set-Status "Decompiling..."
     & $dotnetExe $ilspycmd -p -o $work -r $managed $sourceDll *> (Join-Path $work 'decompile.log')
     $pauseMenuPath = Join-Path $work 'pauseMenuScript.cs'
     if (-not (Test-Path $pauseMenuPath)) {
-        Write-Warning "$($t.Name): decompile failed, see $work\decompile.log - skipping."
-        continue
+        Set-Status "Decompile failed, see $work\decompile.log."
+        return
     }
 
     $src = Get-Content $pauseMenuPath -Raw
-    if ($src -notmatch [regex]::Escape($t.AwakeAnchor)) {
-        Write-Warning "$($t.Name): pauseMenuScript.cs didn't match the expected shape (game may have updated) - skipping. Report this."
-        continue
+    if ($src -notmatch [regex]::Escape($awakeAnchor)) {
+        Set-Status "pauseMenuScript.cs didn't match the expected shape (the game may have updated)."
+        return
     }
-    $src = $src -replace [regex]::Escape($t.AwakeAnchor), ($t.AwakeAnchor + "`r`n" + $hookInsert)
+    $src = $src -replace [regex]::Escape($awakeAnchor), ($awakeAnchor + "`r`n" + $hookInsert)
     $src = $src -replace "(?m)^\tprivate void Start\(\)", ($propsInsert + "`tprivate void Start()")
     Set-Content -Path $pauseMenuPath -Value $src -NoNewline
 
@@ -143,17 +141,18 @@ $refXml
 </Project>
 "@ | Set-Content -Path $csprojPath
 
-    Write-Host "$($t.Name): building..."
+    Set-Status "Building..."
     & $dotnetExe build $csprojPath -c Release *> (Join-Path $work 'build.log')
     $built = Join-Path $work 'bin\Release\netstandard2.1\Assembly-CSharp.dll'
     if (-not (Test-Path $built)) {
-        Write-Warning "$($t.Name): build failed, see $work\build.log - skipping."
-        continue
+        Set-Status "Build failed, see $work\build.log."
+        return
     }
 
     Copy-Item $built $deployed -Force
-    Write-Host "$($t.Name): installed." -ForegroundColor Green
+    Set-Status "Installed."
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 }
-
-Write-Host "`nDone." -ForegroundColor Cyan
+finally {
+    if ($StatusFile) { Add-Content -Path $StatusFile -Value 'STATUS_DONE' }
+}

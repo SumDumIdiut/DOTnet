@@ -1,21 +1,21 @@
 # DOTnet
 
-Cosmetic multiplayer for *IGTAP: An Incremental Game That's Also a Platformer* (Playtest and Demo Steam builds). Patches `Assembly-CSharp.dll` directly — no BepInEx, no mod loader. Other players show up as ghosts synced over a small relay server: position, facing, animation, name, and colour. No shared game state, no physics.
+Cosmetic multiplayer for *IGTAP: An Incremental Game That's Also a Platformer* (the Steam Demo). Patches `Assembly-CSharp.dll` directly — no BepInEx, no mod loader. Other players show up as ghosts synced over a small relay server: position, facing, animation, name, and colour. No shared game state, no physics.
 
 Clicking Connect with the Direct Connect fields untouched reaches a public relay at `wss://codecade.co.za/dotnet` — install and play, no server setup needed. That address is never shown on screen though: the fields just read "Server IP" / "Port" until you type something, so a screenshot or stream of the panel doesn't leak it. Type a real host/port to use a different relay instead; see [Server](#server).
 
 ## Layout
 
 - `mod/` — the mod itself. Eight standalone `.cs` files, no dependency on any other new script.
-- `patches/playtest/`, `patches/demo/` — documentation of the one small change needed in `pauseMenuScript.cs` per build (a `pauseMenuScript.patch` diff, plus the `Assembly-CSharp.csproj` used when building by hand). The installer applies the equivalent edit itself; these are for readers, not required at install time.
+- `patches/playtest/`, `patches/demo/` — documentation of the one small change needed in `pauseMenuScript.cs` (a `pauseMenuScript.patch` diff, plus the `Assembly-CSharp.csproj` used when building by hand) for both Steam builds the mod has been built against. The shipped installer only targets the Demo; the Playtest patch is kept here for reference/manual builds.
 - `server/server.js` — the relay. WebSocket, JSON messages, no game-state authority.
-- `installer/` — `build-and-install.ps1` (the real installer logic: decompile → patch → build → deploy) and `setup.iss` (the Inno Setup wrapper around it).
+- `installer/` — `build-and-install.ps1` (the real installer logic: decompile → patch → build → deploy) and `setup.iss` (the Inno Setup GUI wrapper around it).
 
 ## Installing
 
-Run the installer (`.exe`, from a release, or built yourself per below). It detects whichever of Playtest/Demo you have installed, decompiles each one's own `Assembly-CSharp.dll`, applies the mod, rebuilds, and deploys — keeping a backup of the true original so uninstalling restores it exactly.
+Run the installer (`.exe`, from a release, or built yourself per below). No admin rights needed — it installs per-user and only ever touches your Steam Demo install and its own folder, both of which you already own. It decompiles the Demo's own `Assembly-CSharp.dll`, applies the mod, rebuilds, and deploys — keeping a backup of the true original so uninstalling restores it exactly.
 
-It does a real build, so it needs a .NET SDK — if it can't find one on your system already, it downloads a portable copy automatically (one-time, cached for next time) rather than requiring you to install anything yourself.
+It does a real build, so it needs a .NET SDK. If one isn't already on your system, it asks before downloading a portable copy (about 200 MB, cached for next time) — nothing happens without you saying yes. Progress shows in the installer's own window, not a separate console.
 
 ## Building the installer yourself
 
