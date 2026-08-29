@@ -1,5 +1,5 @@
 #define MyAppName "DOTnet"
-#define MyAppVersion "2.5.2"
+#define MyAppVersion "2.6.0"
 #define ExeName "IGTAPsnfDemo.exe"
 #define DemoDir "C:\Program Files (x86)\Steam\steamapps\common\IGTAP an Incremental Game That''s Also a Platformer Demo"
 
