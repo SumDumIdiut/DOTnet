@@ -281,9 +281,15 @@ internal class MpPanelUI : MonoBehaviour
 		var boxImg = _listBox.AddComponent<Image>();
 		ApplyRoundedBoxStyle(boxImg, Color.white);
 
-		var header = CreateLabel(_listBox.transform, "ListHeader", new Vector2(0, 70), new Vector2(560, 26), "Open lobbies");
+		var header = CreateLabel(_listBox.transform, "ListHeader", new Vector2(-90, 70), new Vector2(380, 26), "Open lobbies");
 		header.fontSize = 20;
 		header.color = new Color(1f, 1f, 1f, 0.65f);
+		header.alignment = TextAlignmentOptions.MidlineLeft;
+
+		var refreshGo = CloneButton(_listBox.transform, "Refresh", new Vector2(235, 70), new Vector2(130, 32), "Refresh");
+		var refreshLabel = refreshGo.transform.Find("Text (TMP)")?.GetComponent<TMP_Text>();
+		if (refreshLabel != null) refreshLabel.fontSize = 18f;
+		refreshGo.GetComponent<Button>().onClick.AddListener(() => MpNetworkManager.GetOrCreate().RequestLobbyList());
 
 		// more than a handful of lobbies overflowed the box outright before - a real
 		// scroll view clips to the visible area and lets the rest scroll into view
