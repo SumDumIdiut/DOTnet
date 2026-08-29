@@ -13,7 +13,8 @@ internal class MpInGameChatHud : MonoBehaviour
 
 	private Canvas _canvas;
 	private CanvasGroup _logGroup;
-	private TMP_Text _logText;
+	private Transform _logRowsContainer;
+	private readonly List<GameObject> _logRows = new List<GameObject>();
 	private GameObject _inputRow;
 	private TMP_InputField _input;
 	private int _lastChatLineCount = -1;
@@ -106,20 +107,14 @@ internal class MpInGameChatHud : MonoBehaviour
 		_logGroup.blocksRaycasts = false;
 		_logGroup.interactable = false;
 
-		var logTextGo = new GameObject("LogText", typeof(RectTransform));
-		logTextGo.transform.SetParent(logGo.transform, false);
-		var logTextRt = (RectTransform)logTextGo.transform;
-		logTextRt.anchorMin = Vector2.zero;
-		logTextRt.anchorMax = Vector2.one;
-		logTextRt.offsetMin = new Vector2(10, 8);
-		logTextRt.offsetMax = new Vector2(-10, -8);
-		_logText = logTextGo.AddComponent<TextMeshProUGUI>();
-		_logText.fontSize = 19;
-		_logText.alignment = TextAlignmentOptions.BottomRight;
-		_logText.enableWordWrapping = true;
-		_logText.color = Color.white;
-		_logText.outlineWidth = 0.18f;
-		_logText.outlineColor = new Color32(0, 0, 0, 255);
+		var logRowsGo = new GameObject("LogRows", typeof(RectTransform));
+		logRowsGo.transform.SetParent(logGo.transform, false);
+		var logRowsRt = (RectTransform)logRowsGo.transform;
+		logRowsRt.anchorMin = Vector2.zero;
+		logRowsRt.anchorMax = Vector2.one;
+		logRowsRt.offsetMin = new Vector2(10, 8);
+		logRowsRt.offsetMax = new Vector2(-10, -8);
+		_logRowsContainer = logRowsGo.transform;
 
 		_inputRow = new GameObject("ChatInputRow", typeof(RectTransform), typeof(Image));
 		_inputRow.transform.SetParent(canvasGo.transform, false);
@@ -241,25 +236,76 @@ internal class MpInGameChatHud : MonoBehaviour
 		_logGroup.alpha = 1f;
 	}
 
+	private const float LogRowHeight = 22f;
+	private const float LogNameColumnWidth = 140f;
+
 	private void RefreshChatLog(List<string> chatLines)
 	{
 		_lastChatLineCount = chatLines.Count;
-		if (chatLines.Count == 0) { _logText.text = ""; return; }
+		foreach (var row in _logRows) UnityEngine.Object.Destroy(row);
+		_logRows.Clear();
+		if (chatLines.Count == 0) return;
 
-		// entries can wrap to more than one rendered line, so trim by actual
-		// rendered line count rather than entry count - otherwise old lines
-		// push the newest ones out past the panel's edge
-		var joined = chatLines[chatLines.Count - 1];
-		for (int i = chatLines.Count - 2; i >= 0; i--)
+		var start = Mathf.Max(0, chatLines.Count - MaxVisibleLines);
+		var visible = chatLines.GetRange(start, chatLines.Count - start);
+
+		// newest at the bottom, older ones stacked upward, each split into a
+		// left-aligned name column and a right-aligned message column instead of
+		// one "Name: message" blob - a long message no longer pushes the name
+		// (or itself) around depending on how the whole line happens to wrap
+		for (int i = 0; i < visible.Count; i++)
 		{
-			var candidate = chatLines[i] + "\n" + joined;
-			_logText.text = candidate;
-			_logText.ForceMeshUpdate();
-			if (_logText.textInfo.lineCount > MaxVisibleLines) break;
-			joined = candidate;
+			var line = visible[i];
+			var colonIdx = line.IndexOf(": ", StringComparison.Ordinal);
+			var namePart = colonIdx >= 0 ? line.Substring(0, colonIdx) : line;
+			var messagePart = colonIdx >= 0 ? line.Substring(colonIdx + 2) : "";
+
+			var rowGo = new GameObject("ChatRow", typeof(RectTransform));
+			rowGo.transform.SetParent(_logRowsContainer, false);
+			var rowRt = (RectTransform)rowGo.transform;
+			rowRt.anchorMin = new Vector2(0, 0);
+			rowRt.anchorMax = new Vector2(1, 0);
+			rowRt.pivot = new Vector2(0.5f, 0f);
+			rowRt.anchoredPosition = new Vector2(0, (visible.Count - 1 - i) * LogRowHeight);
+			rowRt.sizeDelta = new Vector2(0, LogRowHeight);
+
+			var nameGo = new GameObject("Name", typeof(RectTransform));
+			nameGo.transform.SetParent(rowGo.transform, false);
+			var nameRt = (RectTransform)nameGo.transform;
+			nameRt.anchorMin = new Vector2(0, 0);
+			nameRt.anchorMax = new Vector2(0, 1);
+			nameRt.pivot = new Vector2(0, 0.5f);
+			nameRt.anchoredPosition = Vector2.zero;
+			nameRt.sizeDelta = new Vector2(LogNameColumnWidth, 0);
+			var nameTmp = nameGo.AddComponent<TextMeshProUGUI>();
+			nameTmp.fontSize = 17;
+			nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
+			nameTmp.enableWordWrapping = false;
+			nameTmp.overflowMode = TextOverflowModes.Ellipsis;
+			nameTmp.color = Color.white;
+			nameTmp.outlineWidth = 0.18f;
+			nameTmp.outlineColor = new Color32(0, 0, 0, 255);
+			nameTmp.text = namePart;
+
+			var msgGo = new GameObject("Message", typeof(RectTransform));
+			msgGo.transform.SetParent(rowGo.transform, false);
+			var msgRt = (RectTransform)msgGo.transform;
+			msgRt.anchorMin = new Vector2(0, 0);
+			msgRt.anchorMax = new Vector2(1, 1);
+			msgRt.offsetMin = new Vector2(LogNameColumnWidth + 8, 0);
+			msgRt.offsetMax = Vector2.zero;
+			var msgTmp = msgGo.AddComponent<TextMeshProUGUI>();
+			msgTmp.fontSize = 17;
+			msgTmp.alignment = TextAlignmentOptions.MidlineRight;
+			msgTmp.enableWordWrapping = false;
+			msgTmp.overflowMode = TextOverflowModes.Ellipsis;
+			msgTmp.color = Color.white;
+			msgTmp.outlineWidth = 0.18f;
+			msgTmp.outlineColor = new Color32(0, 0, 0, 255);
+			msgTmp.text = messagePart;
+
+			_logRows.Add(rowGo);
 		}
-		_logText.text = joined;
-		_logText.ForceMeshUpdate();
 	}
 
 	private void OpenInput()

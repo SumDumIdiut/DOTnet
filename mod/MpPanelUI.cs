@@ -607,26 +607,15 @@ internal class MpPanelUI : MonoBehaviour
 		highlightRt.offsetMin = Vector2.zero;
 		highlightRt.offsetMax = Vector2.zero;
 		var highlightImg = highlightGo.AddComponent<Image>();
-		highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0f);
+		highlightImg.color = new Color(0f, 0f, 0f, 0f);
 		highlightImg.raycastTarget = false;
 
-		var hoverColor = new Color(0.3f, 0.9f, 0.4f, 1f);
 		var trigger = go.AddComponent<EventTrigger>();
 		var enterEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-		enterEntry.callback.AddListener(_ =>
-		{
-			highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0.25f);
-			nameTmp.color = hoverColor;
-			countTmp.color = hoverColor;
-		});
+		enterEntry.callback.AddListener(_ => highlightImg.color = new Color(0f, 0f, 0f, 0.25f));
 		trigger.triggers.Add(enterEntry);
 		var exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-		exitEntry.callback.AddListener(_ =>
-		{
-			highlightImg.color = new Color(0.3f, 0.9f, 0.4f, 0f);
-			nameTmp.color = nameColor;
-			countTmp.color = textColor;
-		});
+		exitEntry.callback.AddListener(_ => highlightImg.color = new Color(0f, 0f, 0f, 0f));
 		trigger.triggers.Add(exitEntry);
 
 		var button = go.GetComponent<Button>();
