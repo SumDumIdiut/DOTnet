@@ -39,6 +39,7 @@ function lobbySummary(lobbyId) {
     hostName: hostClient ? hostClient.name : '?',
     hostColor: hostClient ? hostClient.nameColor : '#FFFFFF',
     count: l.members.size,
+    hard: !!l.hard,
     mapHubId: l.mapHubId || null,
     mapName: l.mapName || null,
   };
@@ -187,9 +188,10 @@ function handleMessage(id, msg) {
       const name = (typeof msg.name === 'string' && msg.name.trim().length > 0) ? sanitizeName(msg.name, 32) : (c.name + "'s lobby");
       const mapHubId = typeof msg.mapHubId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(msg.mapHubId) ? msg.mapHubId : null;
       const mapName = mapHubId && typeof msg.mapName === 'string' ? sanitizeName(msg.mapName, 48) : null;
-      lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]), chatHistory: [], mapHubId, mapName });
+      const hard = !!msg.hard;
+      lobbies.set(lobbyId, { name, hostId: id, members: new Set([id]), chatHistory: [], mapHubId, mapName, hard });
       c.lobbyId = lobbyId;
-      send(c.ws, { type: 'hosted', lobbyId, name, mapHubId, mapName });
+      send(c.ws, { type: 'hosted', lobbyId, name, mapHubId, mapName, hard });
       console.log(`[lobby] ${id} hosted "${name}" (#${lobbyId})${mapHubId ? ` map=${mapHubId}` : ''}`);
       break;
     }
@@ -213,7 +215,7 @@ function handleMessage(id, msg) {
       leaveLobby(id);
       l.members.add(id);
       c.lobbyId = lobbyId;
-      send(c.ws, { type: 'joined', lobbyId, name: l.name, history: l.chatHistory, mapHubId: l.mapHubId || null, mapName: l.mapName || null });
+      send(c.ws, { type: 'joined', lobbyId, name: l.name, history: l.chatHistory, mapHubId: l.mapHubId || null, mapName: l.mapName || null, hard: !!l.hard });
       console.log(`[lobby] ${id} joined "${l.name}" (#${lobbyId})`);
       break;
     }
