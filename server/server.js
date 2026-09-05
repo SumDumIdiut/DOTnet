@@ -222,6 +222,18 @@ function handleMessage(id, msg) {
       send(c.ws, { type: 'left' });
       break;
     }
+    // Generic passthrough for anything built on top of DOTnet (game modes,
+    // addon mods, etc.) - the relay never needs to understand the payload.
+    case 'game_msg': {
+      if (c.lobbyId == null) break;
+      const l = lobbies.get(c.lobbyId);
+      if (!l) break;
+      for (const memberId of l.members) {
+        const mc = clients.get(memberId);
+        if (mc) send(mc.ws, { type: 'game_msg', from: id, payload: msg.payload });
+      }
+      break;
+    }
     case 'chat': {
       if (c.lobbyId == null) break;
       const l = lobbies.get(c.lobbyId);
